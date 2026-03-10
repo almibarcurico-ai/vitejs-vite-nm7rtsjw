@@ -167,6 +167,8 @@ function ClienteView() {
     return prev.map(i => i.id === id ? {...i, qty: i.qty-1} : i);
   });
 
+  const [trackingId, setTrackingId] = useState(null);
+
   const placeOrder = async (form) => {
     const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
     const {data:order, error} = await supabase.from("orders").insert({
@@ -177,18 +179,13 @@ function ClienteView() {
     await supabase.from("order_items").insert(
       cart.map(i => ({ order_id: order.id, product_id: i.id, product_name: i.name, price: i.price, quantity: i.qty }))
     );
-    setCart([]); setStep("success");
+    setCart([]);
+    setTrackingId(order.id);
+    setStep("tracking");
   };
 
-  if (step === "success") return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.negro}}>
-      <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:20,padding:48,textAlign:"center",maxWidth:320}}>
-        <div style={{fontSize:72}}>🎉</div>
-        <h2 style={{color:"#10b981",margin:"16px 0 8px"}}>¡Pedido enviado!</h2>
-        <p style={{color:C.grisTexto,marginBottom:28}}>Tu pedido fue recibido y está siendo preparado.</p>
-        <button style={btnRed} onClick={()=>setStep("menu")}>Hacer otro pedido</button>
-      </div>
-    </div>
+  if (step === "tracking") return (
+    <OrderTracker orderId={trackingId} onNewOrder={()=>{ setTrackingId(null); setStep("menu"); }}/>
   );
 
   if (step === "form") return (
@@ -378,6 +375,131 @@ function OrderForm({ cart, cartTotal, settings, onSubmit, onBack }) {
   );
 }
 
+/* ── SEGUIMIENTO DE PEDIDO (cliente) ── */
+function OrderTracker({ orderId, onNewOrder }) {
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Carga inicial
+    supabase.from("orders").select("*, order_items(*)").eq("id", orderId).single()
+      .then(({ data }) => { setOrder(data); setLoading(false); });
+
+    // Escucha cambios en tiempo real
+    const sub = supabase.channel("track-" + orderId)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "orders",
+        filter: `id=eq.${orderId}`
+      }, (payload) => {
+        setOrder(prev => ({ ...prev, ...payload.new }));
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, [orderId]);
+
+  const STEPS = [
+    { key: "pendiente",  icon: "🕐", label: "Pedido recibido",    desc: "Esperando confirmación del local" },
+    { key: "preparando", icon: "👨‍🍳", label: "En preparación",    desc: "Tu pedido está siendo preparado" },
+    { key: "listo",      icon: "📦", label: "Listo",              desc: "Tu pedido está listo" },
+    { key: "entregado",  icon: "✅", label: "Entregado",          desc: "¡Disfruta tu pedido!" },
+  ];
+
+  const stepOrder = ["pendiente","preparando","listo","entregado"];
+  const currentIdx = order ? stepOrder.indexOf(order.status) : 0;
+  const isCancelled = order?.status === "cancelado";
+
+  if (loading) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.negro}}>
+      <p style={{color:C.grisTexto,fontSize:16}}>Cargando tu pedido...</p>
+    </div>
+  );
+
+  return (
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,padding:20}}>
+
+      {/* Header */}
+      <div style={{textAlign:"center",padding:"24px 0 20px"}}>
+        <h2 style={{margin:0,color:C.blanco,fontWeight:900,letterSpacing:2,textTransform:"uppercase",fontSize:18}}>
+          🍹 Almíbar
+        </h2>
+        <p style={{color:C.grisTexto,fontSize:13,marginTop:4}}>Seguimiento de tu pedido</p>
+      </div>
+
+      {isCancelled ? (
+        /* ── Pedido cancelado ── */
+        <div style={{background:"#1a0505",border:`1px solid #ef4444`,borderRadius:16,padding:28,textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:56}}>❌</div>
+          <h3 style={{color:"#ef4444",margin:"12px 0 8px",fontSize:20}}>Pedido cancelado</h3>
+          <p style={{color:C.grisTexto,fontSize:14,marginBottom:0}}>
+            Lo sentimos, el local no pudo procesar tu pedido en este momento.
+          </p>
+        </div>
+      ) : (
+        /* ── Progreso ── */
+        <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:16,padding:20,marginBottom:16}}>
+          {STEPS.map((step, idx) => {
+            const done    = idx < currentIdx;
+            const current = idx === currentIdx;
+            const pending = idx > currentIdx;
+            return (
+              <div key={step.key} style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom: idx < STEPS.length-1 ? 0 : 0}}>
+                {/* Línea vertical + ícono */}
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",width:36,flexShrink:0}}>
+                  <div style={{
+                    width:36,height:36,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:18,fontWeight:700,flexShrink:0,
+                    background: current ? C.rojo : done ? "#10b981" : C.negroSuave,
+                    boxShadow: current ? `0 0 16px ${C.rojoGlow}` : done ? "0 0 8px rgba(16,185,129,0.3)" : "none",
+                    border: pending ? `1px solid ${C.grisLinea}` : "none",
+                    opacity: pending ? 0.4 : 1,
+                  }}>
+                    {done ? "✓" : step.icon}
+                  </div>
+                  {idx < STEPS.length-1 && (
+                    <div style={{width:2,height:28,background: done ? "#10b981" : C.grisLinea,margin:"3px 0",opacity: done?1:0.3}}/>
+                  )}
+                </div>
+                {/* Texto */}
+                <div style={{paddingTop:6,paddingBottom:idx<STEPS.length-1?20:0,opacity:pending?0.4:1}}>
+                  <p style={{margin:0,fontWeight:current?800:600,color:current?C.blanco:done?"#10b981":C.grisTexto,fontSize:14}}>
+                    {step.label}
+                    {current && <span style={{marginLeft:8,background:C.rojo,color:"white",borderRadius:20,padding:"2px 8px",fontSize:11,fontWeight:700,animation:"pulse 1.5s infinite"}}>Ahora</span>}
+                  </p>
+                  {(current || done) && (
+                    <p style={{margin:"2px 0 0",fontSize:12,color:C.grisTexto}}>{step.desc}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Resumen del pedido */}
+      {order && (
+        <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:14,padding:16,marginBottom:16}}>
+          <p style={{margin:"0 0 10px",color:C.grisTexto,fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Resumen del pedido</p>
+          {(order.order_items||[]).map((item,i) => (
+            <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.blancoSuave,padding:"3px 0"}}>
+              <span>{item.quantity}× {item.product_name}</span>
+              <span>{fmt(item.price*item.quantity)}</span>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.amarillo,fontSize:16,borderTop:`1px solid ${C.grisLinea}`,paddingTop:10,marginTop:8}}>
+            <span>Total</span><span>{fmt(order.total)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Botón nuevo pedido */}
+      {(isCancelled || order?.status === "entregado") && (
+        <button style={btnRed} onClick={onNewOrder}>Hacer otro pedido</button>
+      )}
+    </div>
+  );
+}
+
 /* ── CAJA ── */
 function CajaView({ onLogout }) {
   const [tab, setTab] = useState("pedidos");
@@ -421,14 +543,33 @@ function CajaView({ onLogout }) {
 }
 
 function OrderCard({ order, onUpdate, readonly }) {
+  const [loading, setLoading] = useState(false);
   const st = STATUS[order.status] || STATUS.pendiente;
   const time = new Date(order.created_at).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"});
   const nextSt  = {pendiente:"preparando",preparando:"listo",listo:"entregado"};
-  const nextLbl = {pendiente:"Confirmar →",preparando:"Listo →",listo:"Entregar ✓"};
+  const nextLbl = {pendiente:"✓ Aceptar",preparando:"Listo para entregar →",listo:"Entregado ✓"};
+
+  const handleUpdate = async (id, status) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.from("orders").update({ status }).eq("id", id);
+      if (error) alert("Error al actualizar: " + error.message);
+    } catch(e) {
+      alert("Error de conexión");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const borderColor = order.status === "pendiente" ? "#f59e0b" : order.status === "cancelado" ? "#ef4444" : "#e5e7eb";
+
   return (
-    <div style={{background:"white",borderRadius:12,padding:16,boxShadow:"0 1px 6px rgba(0,0,0,0.08)"}}>
+    <div style={{background:"white",borderRadius:12,padding:16,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",borderLeft:`4px solid ${borderColor}`}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <div><span style={{fontWeight:700}}>{order.customer_name}</span><span style={{marginLeft:8,color:"#6b7280",fontSize:13}}>{order.delivery_type==="delivery"?"🚗":"🏠"} {time}</span></div>
+        <div>
+          <span style={{fontWeight:700,fontSize:15}}>{order.customer_name}</span>
+          <span style={{marginLeft:8,color:"#6b7280",fontSize:13}}>{order.delivery_type==="delivery"?"🚗 Delivery":"🏠 Retiro"} · {time}</span>
+        </div>
         <span style={{padding:"3px 10px",borderRadius:12,fontSize:12,fontWeight:700,color:st.color,background:st.bg}}>{st.label}</span>
       </div>
       {order.address && <p style={{margin:"4px 0",color:"#6b7280",fontSize:13}}>📍 {order.address}</p>}
@@ -436,15 +577,38 @@ function OrderCard({ order, onUpdate, readonly }) {
       <div style={{background:"#f9fafb",borderRadius:8,padding:10,margin:"8px 0"}}>
         {(order.order_items||[]).map((it,i) => (
           <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"2px 0"}}>
-            <span>{it.quantity}× {it.product_name}</span><span>{fmt(it.price*it.quantity)}</span>
+            <span>{it.quantity}× {it.product_name}</span><span style={{fontWeight:600}}>{fmt(it.price*it.quantity)}</span>
           </div>
         ))}
       </div>
-      {order.notes && <p style={{color:"#6b7280",fontSize:13,background:"#fffbeb",borderRadius:6,padding:"6px 10px",margin:"6px 0"}}>📝 {order.notes}</p>}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,gap:8}}>
-        <span style={{fontWeight:700,fontSize:16}}>{fmt(order.total)}</span>
-        {!readonly && nextSt[order.status] && <button onClick={()=>onUpdate(order.id,nextSt[order.status])} style={{background:"#10b981",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:13}}>{nextLbl[order.status]}</button>}
-        {!readonly && !["cancelado","entregado"].includes(order.status) && <button onClick={()=>onUpdate(order.id,"cancelado")} style={{background:"#fee2e2",color:"#ef4444",border:"none",borderRadius:8,padding:"8px 10px",cursor:"pointer",fontWeight:600,fontSize:13}}>✕</button>}
+      {order.notes && <p style={{color:"#92400e",fontSize:13,background:"#fffbeb",borderRadius:6,padding:"6px 10px",margin:"6px 0"}}>📝 {order.notes}</p>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,gap:8,flexWrap:"wrap"}}>
+        <span style={{fontWeight:800,fontSize:17}}>{fmt(order.total)}</span>
+        <div style={{display:"flex",gap:8}}>
+          {!readonly && nextSt[order.status] && (
+            <button
+              onClick={()=>handleUpdate(order.id, nextSt[order.status])}
+              disabled={loading}
+              style={{
+                background: loading ? "#9ca3af" : (order.status==="pendiente" ? "#10b981" : "#3b82f6"),
+                color:"white",border:"none",borderRadius:8,padding:"10px 16px",
+                cursor:loading?"not-allowed":"pointer",fontWeight:700,fontSize:13,
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? "..." : nextLbl[order.status]}
+            </button>
+          )}
+          {!readonly && !["cancelado","entregado"].includes(order.status) && (
+            <button
+              onClick={()=>{ if(confirm("¿Cancelar este pedido?")) handleUpdate(order.id,"cancelado"); }}
+              disabled={loading}
+              style={{background:"#fee2e2",color:"#ef4444",border:"none",borderRadius:8,padding:"10px 12px",cursor:"pointer",fontWeight:700,fontSize:13}}
+            >
+              Rechazar
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
