@@ -377,20 +377,58 @@ function OrderForm({ cart, cartTotal, settings, onSubmit, onBack }) {
 
 /* ── SEGUIMIENTO DE PEDIDO (cliente) ── */
 function OrderTracker({ orderId, onNewOrder }) {
-  const [order, setOrder] = useState(null);
+  const [order, setOrder]     = useState(null);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast]     = useState(null); // { msg, color, icon }
+  const prevStatus            = useRef(null);
+
+  // Mensajes de notificación por estado
+  const STATUS_MSGS = {
+    preparando: { msg: "¡Tu pedido fue aceptado y está siendo preparado!", color: "#3b82f6", icon: "👨‍🍳" },
+    listo:      { msg: "¡Tu pedido está listo para ser entregado!",        color: "#8b5cf6", icon: "📦" },
+    entregado:  { msg: "¡Pedido entregado! ¡Que lo disfrutes! 🎉",         color: "#10b981", icon: "✅" },
+    cancelado:  { msg: "Tu pedido fue cancelado por el local.",             color: "#ef4444", icon: "❌" },
+  };
+
+  const beep = (freq = 660, dur = 0.25) => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      osc.start(); osc.stop(ctx.currentTime + dur);
+    } catch {}
+  };
+
+  const showToast = (status) => {
+    const t = STATUS_MSGS[status];
+    if (!t) return;
+    setToast(t);
+    beep(status === "cancelado" ? 220 : 880);
+    setTimeout(() => setToast(null), 5000);
+  };
 
   useEffect(() => {
-    // Carga inicial
     supabase.from("orders").select("*, order_items(*)").eq("id", orderId).single()
-      .then(({ data }) => { setOrder(data); setLoading(false); });
+      .then(({ data }) => {
+        setOrder(data);
+        prevStatus.current = data?.status;
+        setLoading(false);
+      });
 
-    // Escucha cambios en tiempo real
     const sub = supabase.channel("track-" + orderId)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "orders",
         filter: `id=eq.${orderId}`
       }, (payload) => {
+        const newStatus = payload.new.status;
+        if (newStatus !== prevStatus.current) {
+          prevStatus.current = newStatus;
+          showToast(newStatus);
+        }
         setOrder(prev => ({ ...prev, ...payload.new }));
       })
       .subscribe();
@@ -399,75 +437,99 @@ function OrderTracker({ orderId, onNewOrder }) {
   }, [orderId]);
 
   const STEPS = [
-    { key: "pendiente",  icon: "🕐", label: "Pedido recibido",    desc: "Esperando confirmación del local" },
-    { key: "preparando", icon: "👨‍🍳", label: "En preparación",    desc: "Tu pedido está siendo preparado" },
-    { key: "listo",      icon: "📦", label: "Listo",              desc: "Tu pedido está listo" },
-    { key: "entregado",  icon: "✅", label: "Entregado",          desc: "¡Disfruta tu pedido!" },
+    { key: "pendiente",  icon: "🕐", label: "Pedido recibido",  desc: "Esperando confirmación del local" },
+    { key: "preparando", icon: "👨‍🍳", label: "En preparación",  desc: "Tu pedido está siendo preparado" },
+    { key: "listo",      icon: "📦", label: "Listo",            desc: "¡Tu pedido está listo!" },
+    { key: "entregado",  icon: "✅", label: "Entregado",        desc: "¡Disfruta tu pedido!" },
   ];
 
-  const stepOrder = ["pendiente","preparando","listo","entregado"];
-  const currentIdx = order ? stepOrder.indexOf(order.status) : 0;
+  const stepOrder   = ["pendiente","preparando","listo","entregado"];
+  const currentIdx  = order ? stepOrder.indexOf(order.status) : 0;
   const isCancelled = order?.status === "cancelado";
 
   if (loading) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.negro}}>
-      <p style={{color:C.grisTexto,fontSize:16}}>Cargando tu pedido...</p>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>🍹</div>
+        <p style={{color:C.grisTexto,fontSize:16}}>Cargando tu pedido...</p>
+      </div>
     </div>
   );
 
   return (
-    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,padding:20}}>
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,padding:20,paddingTop:16}}>
+
+      {/* TOAST de notificación */}
+      {toast && (
+        <div style={{
+          position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",
+          zIndex:999,maxWidth:400,width:"calc(100% - 32px)",
+          background:toast.color,color:"white",
+          borderRadius:14,padding:"14px 18px",
+          display:"flex",alignItems:"center",gap:12,
+          boxShadow:"0 8px 32px rgba(0,0,0,0.4)",
+          animation:"slideDown .3s ease",
+        }}>
+          <span style={{fontSize:24,flexShrink:0}}>{toast.icon}</span>
+          <p style={{margin:0,fontWeight:700,fontSize:14,lineHeight:1.3}}>{toast.msg}</p>
+        </div>
+      )}
+
+      {/* CSS para animación */}
+      <style>{`
+        @keyframes slideDown { from { opacity:0; transform:translateX(-50%) translateY(-20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+        @keyframes pulseRed  { 0%,100%{ box-shadow:0 0 0 0 rgba(196,30,30,0.6); } 50%{ box-shadow:0 0 0 10px rgba(196,30,30,0); } }
+      `}</style>
 
       {/* Header */}
-      <div style={{textAlign:"center",padding:"24px 0 20px"}}>
-        <h2 style={{margin:0,color:C.blanco,fontWeight:900,letterSpacing:2,textTransform:"uppercase",fontSize:18}}>
-          🍹 Almíbar
-        </h2>
+      <div style={{textAlign:"center",padding:"16px 0 20px"}}>
+        <h2 style={{margin:0,color:C.blanco,fontWeight:900,letterSpacing:2,textTransform:"uppercase",fontSize:18}}>🍹 Almíbar</h2>
         <p style={{color:C.grisTexto,fontSize:13,marginTop:4}}>Seguimiento de tu pedido</p>
       </div>
 
       {isCancelled ? (
-        /* ── Pedido cancelado ── */
-        <div style={{background:"#1a0505",border:`1px solid #ef4444`,borderRadius:16,padding:28,textAlign:"center",marginBottom:20}}>
+        <div style={{background:"#1a0505",border:"1px solid #ef4444",borderRadius:16,padding:28,textAlign:"center",marginBottom:20}}>
           <div style={{fontSize:56}}>❌</div>
           <h3 style={{color:"#ef4444",margin:"12px 0 8px",fontSize:20}}>Pedido cancelado</h3>
-          <p style={{color:C.grisTexto,fontSize:14,marginBottom:0}}>
-            Lo sentimos, el local no pudo procesar tu pedido en este momento.
-          </p>
+          <p style={{color:C.grisTexto,fontSize:14}}>Lo sentimos, el local no pudo procesar tu pedido en este momento.</p>
         </div>
       ) : (
-        /* ── Progreso ── */
         <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:16,padding:20,marginBottom:16}}>
           {STEPS.map((step, idx) => {
             const done    = idx < currentIdx;
             const current = idx === currentIdx;
             const pending = idx > currentIdx;
             return (
-              <div key={step.key} style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom: idx < STEPS.length-1 ? 0 : 0}}>
-                {/* Línea vertical + ícono */}
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",width:36,flexShrink:0}}>
+              <div key={step.key} style={{display:"flex",alignItems:"flex-start",gap:14}}>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",width:40,flexShrink:0}}>
                   <div style={{
-                    width:36,height:36,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
-                    fontSize:18,fontWeight:700,flexShrink:0,
+                    width:40,height:40,borderRadius:"50%",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:20,fontWeight:700,flexShrink:0,
                     background: current ? C.rojo : done ? "#10b981" : C.negroSuave,
-                    boxShadow: current ? `0 0 16px ${C.rojoGlow}` : done ? "0 0 8px rgba(16,185,129,0.3)" : "none",
                     border: pending ? `1px solid ${C.grisLinea}` : "none",
-                    opacity: pending ? 0.4 : 1,
+                    opacity: pending ? 0.35 : 1,
+                    animation: current ? "pulseRed 2s infinite" : "none",
                   }}>
                     {done ? "✓" : step.icon}
                   </div>
-                  {idx < STEPS.length-1 && (
-                    <div style={{width:2,height:28,background: done ? "#10b981" : C.grisLinea,margin:"3px 0",opacity: done?1:0.3}}/>
+                  {idx < STEPS.length - 1 && (
+                    <div style={{width:2,height:30,background:done?"#10b981":C.grisLinea,margin:"4px 0",opacity:done?0.9:0.25,transition:"background 0.5s"}}/>
                   )}
                 </div>
-                {/* Texto */}
-                <div style={{paddingTop:6,paddingBottom:idx<STEPS.length-1?20:0,opacity:pending?0.4:1}}>
-                  <p style={{margin:0,fontWeight:current?800:600,color:current?C.blanco:done?"#10b981":C.grisTexto,fontSize:14}}>
-                    {step.label}
-                    {current && <span style={{marginLeft:8,background:C.rojo,color:"white",borderRadius:20,padding:"2px 8px",fontSize:11,fontWeight:700,animation:"pulse 1.5s infinite"}}>Ahora</span>}
-                  </p>
+                <div style={{paddingTop:8,paddingBottom:idx<STEPS.length-1?20:0,opacity:pending?0.35:1,flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <p style={{margin:0,fontWeight:current?800:600,fontSize:15,color:current?C.blanco:done?"#10b981":C.grisTexto}}>
+                      {step.label}
+                    </p>
+                    {current && (
+                      <span style={{background:C.rojo,color:"white",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:800,letterSpacing:0.5}}>
+                        AHORA
+                      </span>
+                    )}
+                  </div>
                   {(current || done) && (
-                    <p style={{margin:"2px 0 0",fontSize:12,color:C.grisTexto}}>{step.desc}</p>
+                    <p style={{margin:"3px 0 0",fontSize:12,color:C.grisTexto,lineHeight:1.4}}>{step.desc}</p>
                   )}
                 </div>
               </div>
@@ -476,10 +538,10 @@ function OrderTracker({ orderId, onNewOrder }) {
         </div>
       )}
 
-      {/* Resumen del pedido */}
+      {/* Resumen */}
       {order && (
         <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:14,padding:16,marginBottom:16}}>
-          <p style={{margin:"0 0 10px",color:C.grisTexto,fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Resumen del pedido</p>
+          <p style={{margin:"0 0 10px",color:C.grisTexto,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Resumen del pedido</p>
           {(order.order_items||[]).map((item,i) => (
             <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.blancoSuave,padding:"3px 0"}}>
               <span>{item.quantity}× {item.product_name}</span>
@@ -492,7 +554,6 @@ function OrderTracker({ orderId, onNewOrder }) {
         </div>
       )}
 
-      {/* Botón nuevo pedido */}
       {(isCancelled || order?.status === "entregado") && (
         <button style={btnRed} onClick={onNewOrder}>Hacer otro pedido</button>
       )}
