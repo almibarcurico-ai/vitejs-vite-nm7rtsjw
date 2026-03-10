@@ -1,453 +1,319 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// =============================================
-// SUPABASE CONFIG
-// =============================================
 const SUPABASE_URL = "https://nnswoxfkdutivhgeiiev.supabase.co";
 const SUPABASE_KEY = "sb_publishable_MUJ-13Ox5UrA20ReTPhXCw_fEDsF3O7";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// =============================================
-// CREDENCIALES
-// =============================================
 const CREDENTIALS = {
   cajero: { password: "almibar2024", role: "caja" },
-  admin: { password: "admin2024", role: "admin" },
+  admin:  { password: "admin2024",   role: "admin" },
 };
 
-// =============================================
-// UTILIDADES
-// =============================================
-const formatCLP = (n) =>
-  new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP" }).format(n || 0);
-
-const STATUS_LABELS = {
-  pendiente: { label: "Pendiente", color: "#f59e0b", bg: "#fef3c7" },
-  preparando: { label: "Preparando", color: "#3b82f6", bg: "#dbeafe" },
-  listo: { label: "Listo", color: "#8b5cf6", bg: "#ede9fe" },
-  entregado: { label: "Entregado", color: "#10b981", bg: "#d1fae5" },
-  cancelado: { label: "Cancelado", color: "#ef4444", bg: "#fee2e2" },
+const C = {
+  negro:      "#0d0d0d",
+  negroCard:  "#181818",
+  negroSuave: "#242424",
+  rojo:       "#C41E1E",
+  rojoGlow:   "rgba(196,30,30,0.35)",
+  blanco:     "#FFFFFF",
+  blancoSuave:"#F0EDE8",
+  grisTexto:  "#9A9080",
+  grisLinea:  "#2a2a2a",
+  amarillo:   "#F5C518",
 };
 
-// =============================================
-// ROUTER
-// =============================================
+const DEFAULT_IMAGES = {
+  Pizzas:          "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&q=80",
+  Acompañamientos: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=600&q=80",
+  Bebidas:         "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=600&q=80",
+  Entradas:        "https://images.unsplash.com/photo-1541014741259-de529411b96a?w=600&q=80",
+  Postres:         "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=600&q=80",
+  Cockteles:       "https://images.unsplash.com/photo-1536935338788-846bb9981813?w=600&q=80",
+  Sushi:           "https://images.unsplash.com/photo-1617196034738-26c5f7c977ce?w=600&q=80",
+  default:         "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=80",
+};
+
+const getImg = (p) => p.image_url || DEFAULT_IMAGES[p.category] || DEFAULT_IMAGES.default;
+const fmt = (n) => new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP" }).format(n || 0);
+
+const STATUS = {
+  pendiente: { label: "Pendiente",  color: "#f59e0b", bg: "#fef3c7" },
+  preparando:{ label: "Preparando", color: "#3b82f6", bg: "#dbeafe" },
+  listo:     { label: "Listo",      color: "#8b5cf6", bg: "#ede9fe" },
+  entregado: { label: "Entregado",  color: "#10b981", bg: "#d1fae5" },
+  cancelado: { label: "Cancelado",  color: "#ef4444", bg: "#fee2e2" },
+};
+
 function getRoute() {
-  const hash = window.location.hash.replace("#", "").toLowerCase();
-  if (hash === "caja") return "caja";
-  if (hash === "admin") return "admin";
+  const h = window.location.hash.replace("#","").toLowerCase();
+  if (h === "caja")  return "caja";
+  if (h === "admin") return "admin";
   return "cliente";
 }
 
-// =============================================
-// HOOK: useSettings
-// =============================================
 function useSettings() {
-  const [settings, setSettings] = useState(null);
-
+  const [s, setS] = useState(null);
   useEffect(() => {
-    supabase.from("settings").select("*").eq("id", 1).single().then(({ data }) => {
-      if (data) setSettings(data);
-    });
-
-    const sub = supabase
-      .channel("settings-changes")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "settings" }, (p) =>
-        setSettings(p.new)
-      )
+    supabase.from("settings").select("*").eq("id",1).single().then(({data}) => data && setS(data));
+    const sub = supabase.channel("s-ch")
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"settings"},(p) => setS(p.new))
       .subscribe();
-
     return () => supabase.removeChannel(sub);
-  }, []);
-
-  const update = async (updates) => {
-    const { data } = await supabase
-      .from("settings")
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq("id", 1)
-      .select()
-      .single();
-    if (data) setSettings(data);
+  },[]);
+  const update = async (u) => {
+    const {data} = await supabase.from("settings").update({...u, updated_at: new Date().toISOString()}).eq("id",1).select().single();
+    if (data) setS(data);
   };
-
-  return { settings, updateSettings: update };
+  return { settings: s, updateSettings: update };
 }
 
-// =============================================
-// HOOK: useProducts
-// =============================================
 function useProducts() {
-  const [products, setProducts] = useState([]);
-
+  const [p, setP] = useState([]);
+  const load = () => supabase.from("products").select("*").order("category").then(({data}) => setP(data||[]));
   useEffect(() => {
-    supabase
-      .from("products")
-      .select("*")
-      .order("category")
-      .then(({ data }) => setProducts(data || []));
-
-    const sub = supabase
-      .channel("products-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => {
-        supabase
-          .from("products")
-          .select("*")
-          .order("category")
-          .then(({ data }) => setProducts(data || []));
-      })
+    load();
+    const sub = supabase.channel("p-ch")
+      .on("postgres_changes",{event:"*",schema:"public",table:"products"}, load)
       .subscribe();
-
     return () => supabase.removeChannel(sub);
-  }, []);
-
-  return products;
+  },[]);
+  return p;
 }
 
-// =============================================
-// HOOK: useOrders
-// =============================================
 function useOrders(filters = {}) {
   const [orders, setOrders] = useState([]);
-
   const fetchOrders = useCallback(async () => {
-    let q = supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .order("created_at", { ascending: false });
-
-    if (filters.date) {
-      const start = filters.date + "T00:00:00";
-      const end = filters.date + "T23:59:59";
-      q = q.gte("created_at", start).lte("created_at", end);
-    }
+    let q = supabase.from("orders").select("*, order_items(*)").order("created_at",{ascending:false});
+    if (filters.date) { q = q.gte("created_at", filters.date+"T00:00:00").lte("created_at", filters.date+"T23:59:59"); }
     if (filters.status) q = q.eq("status", filters.status);
-
-    const { data } = await q;
-    setOrders(data || []);
-  }, [filters.date, filters.status]);
-
+    const {data} = await q;
+    setOrders(data||[]);
+  },[filters.date, filters.status]);
   useEffect(() => {
     fetchOrders();
-
-    const sub = supabase
-      .channel("orders-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, fetchOrders)
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, fetchOrders)
+    const sub = supabase.channel("o-ch")
+      .on("postgres_changes",{event:"*",schema:"public",table:"orders"}, fetchOrders)
+      .on("postgres_changes",{event:"*",schema:"public",table:"order_items"}, fetchOrders)
       .subscribe();
-
     return () => supabase.removeChannel(sub);
-  }, [fetchOrders]);
-
+  },[fetchOrders]);
   return { orders, refetch: fetchOrders };
 }
 
-// =============================================
-// APP PRINCIPAL
-// =============================================
 export default function App() {
   const [route, setRoute] = useState(getRoute());
-  const [auth, setAuth] = useState(null); // { role: 'caja' | 'admin' }
-
+  const [auth, setAuth]   = useState(null);
   useEffect(() => {
-    const handleHash = () => setRoute(getRoute());
-    window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
-  }, []);
-
-  const handleLogin = (role) => setAuth({ role });
-  const handleLogout = () => {
-    setAuth(null);
-    window.location.hash = "";
-  };
-
-  if (route === "caja") {
-    if (!auth || auth.role !== "caja") return <LoginScreen role="caja" onLogin={handleLogin} />;
-    return <CajaView onLogout={handleLogout} />;
-  }
-
-  if (route === "admin") {
-    if (!auth || auth.role !== "admin") return <LoginScreen role="admin" onLogin={handleLogin} />;
-    return <AdminView onLogout={handleLogout} />;
-  }
-
+    const h = () => setRoute(getRoute());
+    window.addEventListener("hashchange", h);
+    return () => window.removeEventListener("hashchange", h);
+  },[]);
+  const logout = () => { setAuth(null); window.location.hash = ""; };
+  if (route === "caja")  { if (!auth||auth.role!=="caja")  return <Login role="caja"  onLogin={r=>setAuth({role:r})}/>; return <CajaView  onLogout={logout}/>; }
+  if (route === "admin") { if (!auth||auth.role!=="admin") return <Login role="admin" onLogin={r=>setAuth({role:r})}/>; return <AdminView onLogout={logout}/>; }
   return <ClienteView />;
 }
 
-// =============================================
-// LOGIN SCREEN
-// =============================================
-function LoginScreen({ role, onLogin }) {
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
-  const [error, setError] = useState("");
-
-  const handleSubmit = () => {
-    const cred = CREDENTIALS[user];
-    if (cred && cred.password === pass && cred.role === role) {
-      onLogin(role);
-    } else {
-      setError("Usuario o contraseña incorrectos");
-    }
+/* ── LOGIN ── */
+function Login({ role, onLogin }) {
+  const [u,setU] = useState(""); const [p,setP] = useState(""); const [err,setErr] = useState("");
+  const go = () => {
+    const c = CREDENTIALS[u];
+    if (c && c.password === p && c.role === role) onLogin(role);
+    else setErr("Usuario o contraseña incorrectos");
   };
-
   return (
-    <div style={styles.loginWrap}>
-      <div style={styles.loginCard}>
-        <div style={styles.loginLogo}>🍹</div>
-        <h2 style={styles.loginTitle}>Almíbar {role === "admin" ? "Admin" : "Caja"}</h2>
-        <input
-          style={styles.input}
-          placeholder="Usuario"
-          value={user}
-          onChange={(e) => setUser(e.target.value)}
-        />
-        <input
-          style={styles.input}
-          type="password"
-          placeholder="Contraseña"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-        />
-        {error && <p style={{ color: "#ef4444", fontSize: 13 }}>{error}</p>}
-        <button style={styles.btnPrimary} onClick={handleSubmit}>
-          Ingresar
-        </button>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`radial-gradient(ellipse at top,#1a0505 0%,${C.negro} 70%)`}}>
+      <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:20,padding:36,width:320,display:"flex",flexDirection:"column",gap:14,boxShadow:`0 0 60px ${C.rojoGlow}`}}>
+        <div style={{fontSize:52,textAlign:"center"}}>🍹</div>
+        <h2 style={{textAlign:"center",margin:0,color:C.blanco,letterSpacing:2,fontSize:18,textTransform:"uppercase"}}>
+          Almíbar · {role === "admin" ? "Admin" : "Caja"}
+        </h2>
+        <input style={inp} placeholder="Usuario" value={u} onChange={e=>setU(e.target.value)}/>
+        <input style={inp} type="password" placeholder="Contraseña" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/>
+        {err && <p style={{color:"#ef4444",fontSize:13,margin:0}}>{err}</p>}
+        <button style={btnRed} onClick={go}>Ingresar</button>
       </div>
     </div>
   );
 }
 
-// =============================================
-// VISTA CLIENTE
-// =============================================
+/* ── VISTA CLIENTE ── */
 function ClienteView() {
   const products = useProducts();
   const { settings } = useSettings();
-  const [cart, setCart] = useState([]);
+  const [cart, setCart]       = useState([]);
   const [showCart, setShowCart] = useState(false);
-  const [orderForm, setOrderForm] = useState(false);
-  const [orderSuccess, setOrderSuccess] = useState(false);
-  const [activeCategory, setActiveCategory] = useState("all");
+  const [step, setStep]       = useState("menu");
+  const [activeCat, setActiveCat] = useState("all");
 
-  const categories = ["all", ...new Set(products.map((p) => p.category))];
-  const filtered =
-    activeCategory === "all"
-      ? products.filter((p) => p.available)
-      : products.filter((p) => p.available && p.category === activeCategory);
+  const categories = ["all", ...new Set(products.map(p => p.category))];
+  const filtered = activeCat === "all"
+    ? products.filter(p => p.available)
+    : products.filter(p => p.available && p.category === activeCat);
 
-  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  const cartTotal = cart.reduce((s,i) => s + i.price * i.qty, 0);
+  const cartCount = cart.reduce((s,i) => s + i.qty, 0);
 
-  const addToCart = (product) => {
-    setCart((prev) => {
-      const ex = prev.find((i) => i.id === product.id);
-      if (ex) return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
-      return [...prev, { ...product, qty: 1 }];
-    });
-  };
-
-  const removeFromCart = (id) => {
-    setCart((prev) => {
-      const ex = prev.find((i) => i.id === id);
-      if (ex.qty === 1) return prev.filter((i) => i.id !== id);
-      return prev.map((i) => (i.id === id ? { ...i, qty: i.qty - 1 } : i));
-    });
-  };
+  const add = (prod) => setCart(prev => {
+    const ex = prev.find(i => i.id === prod.id);
+    if (ex) return prev.map(i => i.id === prod.id ? {...i, qty: i.qty+1} : i);
+    return [...prev, {...prod, qty:1}];
+  });
+  const remove = (id) => setCart(prev => {
+    const ex = prev.find(i => i.id === id);
+    if (ex.qty === 1) return prev.filter(i => i.id !== id);
+    return prev.map(i => i.id === id ? {...i, qty: i.qty-1} : i);
+  });
 
   const placeOrder = async (form) => {
-    const total =
-      cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost || 0) : 0);
-
-    const { data: order, error } = await supabase
-      .from("orders")
-      .insert({
-        customer_name: form.name,
-        customer_phone: form.phone,
-        address: form.address,
-        delivery_type: form.delivery_type,
-        notes: form.notes,
-        total,
-        status: "pendiente",
-      })
-      .select()
-      .single();
-
-    if (error) return alert("Error al enviar pedido. Intenta de nuevo.");
-
+    const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
+    const {data:order, error} = await supabase.from("orders").insert({
+      customer_name: form.name, customer_phone: form.phone, address: form.address,
+      delivery_type: form.delivery_type, notes: form.notes, total, status: "pendiente",
+    }).select().single();
+    if (error) return alert("Error al enviar pedido");
     await supabase.from("order_items").insert(
-      cart.map((i) => ({
-        order_id: order.id,
-        product_id: i.id,
-        product_name: i.name,
-        price: i.price,
-        quantity: i.qty,
-      }))
+      cart.map(i => ({ order_id: order.id, product_id: i.id, product_name: i.name, price: i.price, quantity: i.qty }))
     );
-
-    setCart([]);
-    setOrderForm(false);
-    setOrderSuccess(true);
+    setCart([]); setStep("success");
   };
 
-  if (orderSuccess) {
-    return (
-      <div style={styles.successWrap}>
-        <div style={styles.successCard}>
-          <div style={{ fontSize: 64 }}>🎉</div>
-          <h2 style={{ color: "#10b981", margin: "12px 0 8px" }}>¡Pedido enviado!</h2>
-          <p style={{ color: "#6b7280", marginBottom: 24 }}>
-            Tu pedido fue recibido y está siendo preparado.
-          </p>
-          <button style={styles.btnPrimary} onClick={() => setOrderSuccess(false)}>
-            Hacer otro pedido
-          </button>
-        </div>
+  if (step === "success") return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.negro}}>
+      <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:20,padding:48,textAlign:"center",maxWidth:320}}>
+        <div style={{fontSize:72}}>🎉</div>
+        <h2 style={{color:"#10b981",margin:"16px 0 8px"}}>¡Pedido enviado!</h2>
+        <p style={{color:C.grisTexto,marginBottom:28}}>Tu pedido fue recibido y está siendo preparado.</p>
+        <button style={btnRed} onClick={()=>setStep("menu")}>Hacer otro pedido</button>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (orderForm) {
-    return (
-      <OrderFormScreen
-        cart={cart}
-        cartTotal={cartTotal}
-        settings={settings}
-        onSubmit={placeOrder}
-        onBack={() => setOrderForm(false)}
-      />
-    );
-  }
+  if (step === "form") return (
+    <OrderForm cart={cart} cartTotal={cartTotal} settings={settings} onSubmit={placeOrder} onBack={()=>setStep("menu")}/>
+  );
 
   return (
-    <div style={styles.clienteWrap}>
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,paddingBottom:90}}>
+
       {/* Header */}
-      <header style={styles.clienteHeader}>
+      <header style={{background:C.negro,borderBottom:`2px solid ${C.rojo}`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:`0 2px 24px ${C.rojoGlow}`}}>
         <div>
-          <h1 style={styles.clienteTitle}>🍹 Almíbar</h1>
+          <h1 style={{margin:0,fontSize:20,color:C.blanco,fontWeight:900,letterSpacing:3,textTransform:"uppercase"}}>🍹 Almíbar</h1>
           {settings && (
-            <span style={{ fontSize: 12, color: settings.open ? "#10b981" : "#ef4444" }}>
+            <span style={{fontSize:11,color:settings.open?"#10b981":"#ef4444",fontWeight:600}}>
               {settings.open ? "● Abierto" : "● Cerrado"} · {settings.hours}
             </span>
           )}
         </div>
-        <button style={styles.cartBtn} onClick={() => setShowCart(!showCart)}>
+        <button onClick={()=>setShowCart(!showCart)} style={{position:"relative",background:"transparent",border:"none",cursor:"pointer",fontSize:26,color:C.blanco,padding:4}}>
           🛒
-          {cartCount > 0 && <span style={styles.cartBadge}>{cartCount}</span>}
+          {cartCount > 0 && (
+            <span style={{position:"absolute",top:-2,right:-4,background:C.rojo,color:"#fff",borderRadius:"50%",width:18,height:18,fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{cartCount}</span>
+          )}
         </button>
       </header>
 
+      {/* Info banner */}
+      <div style={{background:`linear-gradient(135deg,#1a0505 0%,#2a0808 100%)`,padding:"14px 18px",borderBottom:`1px solid ${C.grisLinea}`}}>
+        <p style={{margin:0,color:C.blancoSuave,fontSize:14,fontWeight:600}}>🚗 Delivery · 🏠 Retiro en local</p>
+        {settings?.min_order > 0 && (
+          <p style={{margin:"3px 0 0",color:C.grisTexto,fontSize:12}}>
+            Pedido mínimo {fmt(settings.min_order)} · Despacho {fmt(settings.delivery_cost)}
+          </p>
+        )}
+      </div>
+
       {/* Categorías */}
-      <div style={styles.catScroll}>
-        {categories.map((c) => (
-          <button
-            key={c}
-            style={{
-              ...styles.catBtn,
-              ...(activeCategory === c ? styles.catBtnActive : {}),
-            }}
-            onClick={() => setActiveCategory(c)}
-          >
+      <div style={{display:"flex",gap:8,padding:"12px 14px",overflowX:"auto",background:C.negroSuave,borderBottom:`1px solid ${C.grisLinea}`,scrollbarWidth:"none"}}>
+        {categories.map(c => (
+          <button key={c} onClick={()=>setActiveCat(c)} style={{
+            whiteSpace:"nowrap",padding:"7px 16px",borderRadius:20,cursor:"pointer",
+            fontSize:13,fontWeight:700,border:"none",
+            background: activeCat===c ? C.rojo : C.negro,
+            color: activeCat===c ? C.blanco : C.grisTexto,
+            boxShadow: activeCat===c ? `0 2px 12px ${C.rojoGlow}` : "none",
+          }}>
             {c === "all" ? "Todo" : c}
           </button>
         ))}
       </div>
 
-      {/* Productos */}
-      <div style={styles.productsGrid}>
-        {filtered.map((product) => {
-          const inCart = cart.find((i) => i.id === product.id);
+      {/* Grid productos — estilo PedidosYa */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,padding:"12px 10px"}}>
+        {filtered.map(product => {
+          const inCart = cart.find(i => i.id === product.id);
           return (
-            <div key={product.id} style={styles.productCard}>
-              <div style={styles.productEmoji}>
-                {product.category === "Pizzas"
-                  ? "🍕"
-                  : product.category === "Bebidas"
-                  ? "🥤"
-                  : "🍟"}
+            <div key={product.id} style={{background:C.negroCard,borderRadius:14,overflow:"hidden",border:`1px solid ${C.grisLinea}`,display:"flex",flexDirection:"column"}}>
+              {/* Imagen */}
+              <div style={{position:"relative",height:120,overflow:"hidden",flexShrink:0}}>
+                <img src={getImg(product)} alt={product.name}
+                  style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
+                  onError={e=>{e.target.src=DEFAULT_IMAGES.default;}}/>
+                <div style={{position:"absolute",bottom:0,left:0,right:0,height:40,background:"linear-gradient(transparent,rgba(0,0,0,0.65))"}}/>
               </div>
-              <div style={styles.productInfo}>
-                <p style={styles.productName}>{product.name}</p>
+
+              {/* Info */}
+              <div style={{padding:"10px 11px 12px",flex:1,display:"flex",flexDirection:"column",gap:2}}>
+                <p style={{margin:0,fontWeight:700,color:C.blanco,fontSize:13,lineHeight:1.3}}>{product.name}</p>
                 {product.description && (
-                  <p style={styles.productDesc}>{product.description}</p>
+                  <p style={{margin:0,color:C.grisTexto,fontSize:11,lineHeight:1.3}}>{product.description}</p>
                 )}
-                <p style={styles.productPrice}>{formatCLP(product.price)}</p>
-              </div>
-              <div style={styles.productActions}>
-                {inCart ? (
-                  <div style={styles.qtyControl}>
-                    <button style={styles.qtyBtn} onClick={() => removeFromCart(product.id)}>
-                      −
+                <p style={{margin:"4px 0 0",fontWeight:800,color:C.amarillo,fontSize:15}}>{fmt(product.price)}</p>
+                <div style={{marginTop:"auto",paddingTop:8}}>
+                  {inCart ? (
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.negroSuave,borderRadius:20,padding:"4px 8px"}}>
+                      <button onClick={()=>remove(product.id)} style={qtyBtn}>−</button>
+                      <span style={{color:C.blanco,fontWeight:700,fontSize:14}}>{inCart.qty}</span>
+                      <button onClick={()=>add(product)} style={qtyBtn}>+</button>
+                    </div>
+                  ) : (
+                    <button onClick={()=>add(product)} style={{width:"100%",padding:"8px 0",background:C.rojo,color:C.blanco,border:"none",borderRadius:20,fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:`0 2px 8px ${C.rojoGlow}`}}>
+                      + Agregar
                     </button>
-                    <span style={styles.qtyNum}>{inCart.qty}</span>
-                    <button style={styles.qtyBtn} onClick={() => addToCart(product)}>
-                      +
-                    </button>
-                  </div>
-                ) : (
-                  <button style={styles.addBtn} onClick={() => addToCart(product)}>
-                    Agregar
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Cart Drawer */}
+      {/* Drawer carrito */}
       {showCart && (
-        <div style={styles.cartOverlay} onClick={() => setShowCart(false)}>
-          <div style={styles.cartDrawer} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.cartHeader}>
-              <h3 style={{ margin: 0 }}>Tu pedido</h3>
-              <button style={styles.closeBtn} onClick={() => setShowCart(false)}>
-                ✕
-              </button>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowCart(false)}>
+          <div style={{background:C.negroCard,width:"100%",maxWidth:520,margin:"0 auto",borderRadius:"20px 20px 0 0",padding:20,maxHeight:"80vh",overflowY:"auto",border:`1px solid ${C.grisLinea}`,borderBottom:"none"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{margin:0,color:C.blanco,fontSize:17}}>Tu pedido</h3>
+              <button onClick={()=>setShowCart(false)} style={{background:C.negroSuave,border:"none",borderRadius:"50%",width:32,height:32,color:C.grisTexto,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
             </div>
             {cart.length === 0 ? (
-              <p style={{ color: "#9ca3af", textAlign: "center", padding: 32 }}>
-                Tu carrito está vacío
-              </p>
+              <p style={{color:C.grisTexto,textAlign:"center",padding:32}}>Tu carrito está vacío</p>
             ) : (
               <>
-                {cart.map((item) => (
-                  <div key={item.id} style={styles.cartItem}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 600 }}>{item.name}</p>
-                      <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>
-                        {formatCLP(item.price)} × {item.qty}
-                      </p>
+                {cart.map(item => (
+                  <div key={item.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:`1px solid ${C.grisLinea}`}}>
+                    <img src={getImg(item)} alt={item.name} style={{width:52,height:52,objectFit:"cover",borderRadius:10,flexShrink:0}} onError={e=>{e.target.src=DEFAULT_IMAGES.default;}}/>
+                    <div style={{flex:1}}>
+                      <p style={{margin:0,fontWeight:600,color:C.blanco,fontSize:14}}>{item.name}</p>
+                      <p style={{margin:"2px 0 0",color:C.grisTexto,fontSize:12}}>{fmt(item.price)} × {item.qty}</p>
                     </div>
-                    <div style={styles.qtyControl}>
-                      <button style={styles.qtyBtn} onClick={() => removeFromCart(item.id)}>
-                        −
-                      </button>
-                      <span style={styles.qtyNum}>{item.qty}</span>
-                      <button style={styles.qtyBtn} onClick={() => addToCart(item)}>
-                        +
-                      </button>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <button onClick={()=>remove(item.id)} style={qtyBtn}>−</button>
+                      <span style={{color:C.blanco,fontWeight:700}}>{item.qty}</span>
+                      <button onClick={()=>add(item)} style={qtyBtn}>+</button>
                     </div>
                   </div>
                 ))}
-                <div style={styles.cartTotal}>
-                  <span>Subtotal</span>
-                  <span>{formatCLP(cartTotal)}</span>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"14px 0",color:C.blanco,fontWeight:700,fontSize:16,borderTop:`1px solid ${C.grisLinea}`}}>
+                  <span>Subtotal</span><span style={{color:C.amarillo}}>{fmt(cartTotal)}</span>
                 </div>
                 {settings?.delivery_cost > 0 && (
-                  <div style={{ ...styles.cartTotal, color: "#6b7280", fontSize: 13 }}>
-                    <span>+ Despacho desde</span>
-                    <span>{formatCLP(settings.delivery_cost)}</span>
-                  </div>
+                  <p style={{color:C.grisTexto,fontSize:13,margin:"0 0 8px",textAlign:"right"}}>+ Despacho desde {fmt(settings.delivery_cost)}</p>
                 )}
-                <button
-                  style={{ ...styles.btnPrimary, marginTop: 16 }}
-                  onClick={() => {
-                    setShowCart(false);
-                    setOrderForm(true);
-                  }}
-                >
+                <button style={{...btnRed,marginTop:8}} onClick={()=>{setShowCart(false);setStep("form");}}>
                   Ir al pedido →
                 </button>
               </>
@@ -456,1218 +322,339 @@ function ClienteView() {
         </div>
       )}
 
-      {/* Botón flotante */}
+      {/* FAB */}
       {cartCount > 0 && !showCart && (
-        <button style={styles.fabCart} onClick={() => setShowCart(true)}>
-          🛒 Ver pedido · {formatCLP(cartTotal)}
+        <button onClick={()=>setShowCart(true)} style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:C.rojo,color:C.blanco,border:"none",borderRadius:40,padding:"14px 28px",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:`0 4px 28px ${C.rojoGlow}`,zIndex:100,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{background:"rgba(255,255,255,0.25)",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13}}>{cartCount}</span>
+          Ver pedido · {fmt(cartTotal)}
         </button>
       )}
     </div>
   );
 }
 
-// =============================================
-// FORMULARIO DE PEDIDO
-// =============================================
-function OrderFormScreen({ cart, cartTotal, settings, onSubmit, onBack }) {
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    address: "",
-    delivery_type: "delivery",
-    notes: "",
-  });
+/* ── FORMULARIO PEDIDO ── */
+function OrderForm({ cart, cartTotal, settings, onSubmit, onBack }) {
+  const [form, setForm] = useState({name:"",phone:"",address:"",delivery_type:"delivery",notes:""});
   const [loading, setLoading] = useState(false);
-
-  const total =
-    cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost || 0) : 0);
-
-  const handleSubmit = async () => {
-    if (!form.name || !form.phone) return alert("Ingresa tu nombre y teléfono");
-    if (form.delivery_type === "delivery" && !form.address) return alert("Ingresa tu dirección");
-    setLoading(true);
-    await onSubmit(form);
-    setLoading(false);
+  const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
+  const go = async () => {
+    if (!form.name||!form.phone) return alert("Ingresa tu nombre y teléfono");
+    if (form.delivery_type==="delivery"&&!form.address) return alert("Ingresa tu dirección");
+    setLoading(true); await onSubmit(form); setLoading(false);
   };
-
   return (
-    <div style={styles.formWrap}>
-      <button style={styles.backBtn} onClick={onBack}>
-        ← Volver
-      </button>
-      <h2 style={{ marginBottom: 20 }}>Datos del pedido</h2>
-
-      {/* Tipo de entrega */}
-      <div style={styles.toggleGroup}>
-        <button
-          style={{
-            ...styles.toggleBtn,
-            ...(form.delivery_type === "delivery" ? styles.toggleBtnActive : {}),
-          }}
-          onClick={() => setForm({ ...form, delivery_type: "delivery" })}
-        >
-          🚗 Delivery
-        </button>
-        <button
-          style={{
-            ...styles.toggleBtn,
-            ...(form.delivery_type === "pickup" ? styles.toggleBtnActive : {}),
-          }}
-          onClick={() => setForm({ ...form, delivery_type: "pickup" })}
-        >
-          🏠 Retiro en local
-        </button>
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,padding:20}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:C.grisTexto,cursor:"pointer",fontSize:15,marginBottom:16,padding:0}}>← Volver</button>
+      <h2 style={{color:C.blanco,marginBottom:20}}>Datos del pedido</h2>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {["delivery","pickup"].map(t => (
+          <button key={t} onClick={()=>setForm({...form,delivery_type:t})} style={{flex:1,padding:12,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,border:`2px solid ${form.delivery_type===t?C.rojo:C.grisLinea}`,background:form.delivery_type===t?"#2a0808":C.negroCard,color:form.delivery_type===t?C.blanco:C.grisTexto}}>
+            {t==="delivery"?"🚗 Delivery":"🏠 Retiro en local"}
+          </button>
+        ))}
       </div>
-
-      <input
-        style={styles.input}
-        placeholder="Tu nombre *"
-        value={form.name}
-        onChange={(e) => setForm({ ...form, name: e.target.value })}
-      />
-      <input
-        style={styles.input}
-        placeholder="Teléfono *"
-        type="tel"
-        value={form.phone}
-        onChange={(e) => setForm({ ...form, phone: e.target.value })}
-      />
-      {form.delivery_type === "delivery" && (
-        <input
-          style={styles.input}
-          placeholder="Dirección *"
-          value={form.address}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-        />
-      )}
-      <textarea
-        style={{ ...styles.input, height: 80, resize: "vertical" }}
-        placeholder="Notas del pedido (opcional)"
-        value={form.notes}
-        onChange={(e) => setForm({ ...form, notes: e.target.value })}
-      />
-
-      {/* Resumen */}
-      <div style={styles.orderSummary}>
-        {cart.map((item) => (
-          <div key={item.id} style={styles.summaryRow}>
-            <span>
-              {item.name} × {item.qty}
-            </span>
-            <span>{formatCLP(item.price * item.qty)}</span>
+      <input style={inp} placeholder="Tu nombre *" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+      <input style={inp} placeholder="Teléfono *" type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/>
+      {form.delivery_type==="delivery" && <input style={inp} placeholder="Dirección *" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/>}
+      <textarea style={{...inp,height:80,resize:"vertical"}} placeholder="Notas (opcional)" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/>
+      <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:12,padding:16,marginBottom:16}}>
+        {cart.map(item => (
+          <div key={item.id} style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.blancoSuave,padding:"4px 0"}}>
+            <span>{item.name} × {item.qty}</span><span>{fmt(item.price*item.qty)}</span>
           </div>
         ))}
-        {form.delivery_type === "delivery" && (
-          <div style={styles.summaryRow}>
-            <span>Despacho</span>
-            <span>{formatCLP(settings?.delivery_cost || 0)}</span>
+        {form.delivery_type==="delivery" && (
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.grisTexto,padding:"4px 0"}}>
+            <span>Despacho</span><span>{fmt(settings?.delivery_cost||0)}</span>
           </div>
         )}
-        <div style={{ ...styles.summaryRow, fontWeight: 700, borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>
-          <span>Total</span>
-          <span>{formatCLP(total)}</span>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.amarillo,fontSize:16,borderTop:`1px solid ${C.grisLinea}`,paddingTop:10,marginTop:6}}>
+          <span>Total</span><span>{fmt(total)}</span>
         </div>
       </div>
-
-      <button style={styles.btnPrimary} onClick={handleSubmit} disabled={loading}>
-        {loading ? "Enviando..." : "Confirmar pedido"}
-      </button>
+      <button style={btnRed} onClick={go} disabled={loading}>{loading?"Enviando...":"Confirmar pedido"}</button>
     </div>
   );
 }
 
-// =============================================
-// VISTA CAJA
-// =============================================
+/* ── CAJA ── */
 function CajaView({ onLogout }) {
   const [tab, setTab] = useState("pedidos");
   const today = new Date().toISOString().split("T")[0];
   const { orders } = useOrders({ date: today });
-  const audioRef = useRef(null);
-  const prevCountRef = useRef(0);
-
-  // Notificación sonora al llegar nuevo pedido
+  const prevCount = useRef(0);
   useEffect(() => {
-    const pendientes = orders.filter((o) => o.status === "pendiente").length;
-    if (pendientes > prevCountRef.current) {
-      // Vibración / beep simple
-      try {
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        osc.connect(ctx.destination);
-        osc.frequency.value = 880;
-        osc.start();
-        osc.stop(ctx.currentTime + 0.3);
-      } catch {}
-    }
-    prevCountRef.current = pendientes;
-  }, [orders]);
-
-  const updateStatus = async (id, status) => {
-    await supabase.from("orders").update({ status }).eq("id", id);
-  };
-
-  // Stats del día
-  const completedOrders = orders.filter((o) => o.status === "entregado");
-  const totalVentas = completedOrders.reduce((s, o) => s + o.total, 0);
-  const deliveryOrders = completedOrders.filter((o) => o.delivery_type === "delivery").length;
-  const pickupOrders = completedOrders.filter((o) => o.delivery_type === "pickup").length;
-
-  const activeOrders = orders.filter((o) =>
-    ["pendiente", "preparando", "listo"].includes(o.status)
-  );
-
+    const p = orders.filter(o=>o.status==="pendiente").length;
+    if (p > prevCount.current) { try{const ctx=new AudioContext();const o=ctx.createOscillator();o.connect(ctx.destination);o.frequency.value=880;o.start();o.stop(ctx.currentTime+0.3);}catch{} }
+    prevCount.current = p;
+  },[orders]);
+  const upd = (id, status) => supabase.from("orders").update({status}).eq("id",id);
+  const active = orders.filter(o => ["pendiente","preparando","listo"].includes(o.status));
   return (
-    <div style={styles.pageWrap}>
-      <header style={styles.pageHeader}>
-        <h2 style={{ margin: 0 }}>🍹 Caja — {new Date().toLocaleDateString("es-CL")}</h2>
-        <button style={styles.logoutBtn} onClick={onLogout}>
-          Salir
-        </button>
+    <div style={{minHeight:"100vh",background:"#f0ede8"}}>
+      <header style={{background:C.negro,borderBottom:`2px solid ${C.rojo}`,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <h2 style={{margin:0,color:C.blanco,fontWeight:800}}>🍹 Caja · {new Date().toLocaleDateString("es-CL")}</h2>
+        <button onClick={onLogout} style={{background:"rgba(255,255,255,0.1)",color:C.blanco,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer"}}>Salir</button>
       </header>
-
-      {/* Tabs */}
-      <div style={styles.tabs}>
-        <button
-          style={{ ...styles.tab, ...(tab === "pedidos" ? styles.tabActive : {}) }}
-          onClick={() => setTab("pedidos")}
-        >
-          Pedidos activos
-          {activeOrders.length > 0 && (
-            <span style={styles.tabBadge}>{activeOrders.length}</span>
-          )}
-        </button>
-        <button
-          style={{ ...styles.tab, ...(tab === "historial" ? styles.tabActive : {}) }}
-          onClick={() => setTab("historial")}
-        >
-          Historial
-        </button>
-        <button
-          style={{ ...styles.tab, ...(tab === "cuadre" ? styles.tabActive : {}) }}
-          onClick={() => setTab("cuadre")}
-        >
-          Cuadre del día
-        </button>
+      <div style={{display:"flex",background:"white",borderBottom:"1px solid #e5e7eb",overflowX:"auto"}}>
+        {[["pedidos","Pedidos activos"],["historial","Historial"],["cuadre","Cuadre del día"]].map(([k,l]) => (
+          <button key={k} onClick={()=>setTab(k)} style={{padding:"12px 20px",background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap",fontWeight:tab===k?700:500,fontSize:14,color:tab===k?C.rojo:"#6b7280",borderBottom:tab===k?`2px solid ${C.rojo}`:"2px solid transparent"}}>
+            {l}{k==="pedidos"&&active.length>0&&<span style={{marginLeft:6,background:C.rojo,color:"white",borderRadius:10,padding:"1px 7px",fontSize:11,fontWeight:700}}>{active.length}</span>}
+          </button>
+        ))}
       </div>
-
-      {tab === "pedidos" && (
-        <div style={styles.ordersGrid}>
-          {activeOrders.length === 0 ? (
-            <div style={styles.emptyState}>
-              <div style={{ fontSize: 48 }}>🎉</div>
-              <p>Sin pedidos activos por ahora</p>
-            </div>
-          ) : (
-            activeOrders.map((order) => (
-              <OrderCard key={order.id} order={order} onUpdateStatus={updateStatus} />
-            ))
-          )}
+      {tab==="pedidos" && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16,padding:16}}>
+          {active.length===0 ? <div style={{gridColumn:"1/-1",textAlign:"center",padding:60,color:"#9ca3af"}}><div style={{fontSize:48}}>✅</div><p>Sin pedidos activos</p></div>
+          : active.map(o => <OrderCard key={o.id} order={o} onUpdate={upd}/>)}
         </div>
       )}
-
-      {tab === "historial" && (
-        <div style={styles.ordersGrid}>
-          {orders
-            .filter((o) => ["entregado", "cancelado"].includes(o.status))
-            .map((order) => (
-              <OrderCard key={order.id} order={order} onUpdateStatus={updateStatus} readonly />
-            ))}
+      {tab==="historial" && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16,padding:16}}>
+          {orders.filter(o=>["entregado","cancelado"].includes(o.status)).map(o=><OrderCard key={o.id} order={o} onUpdate={upd} readonly/>)}
         </div>
       )}
-
-      {tab === "cuadre" && (
-        <CuadreDiario orders={orders} />
-      )}
+      {tab==="cuadre" && <Cuadre orders={orders}/>}
     </div>
   );
 }
 
-// =============================================
-// TARJETA DE PEDIDO
-// =============================================
-function OrderCard({ order, onUpdateStatus, readonly }) {
-  const st = STATUS_LABELS[order.status] || STATUS_LABELS.pendiente;
-  const time = new Date(order.created_at).toLocaleTimeString("es-CL", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const nextStatus = {
-    pendiente: "preparando",
-    preparando: "listo",
-    listo: "entregado",
-  };
-
-  const nextLabel = {
-    pendiente: "Confirmar →",
-    preparando: "Marcar listo →",
-    listo: "Entregar ✓",
-  };
-
+function OrderCard({ order, onUpdate, readonly }) {
+  const st = STATUS[order.status] || STATUS.pendiente;
+  const time = new Date(order.created_at).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"});
+  const nextSt  = {pendiente:"preparando",preparando:"listo",listo:"entregado"};
+  const nextLbl = {pendiente:"Confirmar →",preparando:"Listo →",listo:"Entregar ✓"};
   return (
-    <div style={styles.orderCard}>
-      <div style={styles.orderCardHeader}>
-        <div>
-          <span style={{ fontWeight: 700 }}>{order.customer_name}</span>
-          <span style={{ marginLeft: 8, color: "#6b7280", fontSize: 13 }}>
-            {order.delivery_type === "delivery" ? "🚗" : "🏠"} {time}
-          </span>
-        </div>
-        <span
-          style={{
-            ...styles.statusBadge,
-            color: st.color,
-            backgroundColor: st.bg,
-          }}
-        >
-          {st.label}
-        </span>
+    <div style={{background:"white",borderRadius:12,padding:16,boxShadow:"0 1px 6px rgba(0,0,0,0.08)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div><span style={{fontWeight:700}}>{order.customer_name}</span><span style={{marginLeft:8,color:"#6b7280",fontSize:13}}>{order.delivery_type==="delivery"?"🚗":"🏠"} {time}</span></div>
+        <span style={{padding:"3px 10px",borderRadius:12,fontSize:12,fontWeight:700,color:st.color,background:st.bg}}>{st.label}</span>
       </div>
-
-      {order.address && (
-        <p style={{ margin: "4px 0", color: "#6b7280", fontSize: 13 }}>📍 {order.address}</p>
-      )}
-      {order.customer_phone && (
-        <p style={{ margin: "4px 0", color: "#6b7280", fontSize: 13 }}>
-          📞 {order.customer_phone}
-        </p>
-      )}
-
-      <div style={styles.orderItems}>
-        {(order.order_items || []).map((item, i) => (
-          <div key={i} style={styles.orderItemRow}>
-            <span>
-              {item.quantity}× {item.product_name}
-            </span>
-            <span>{formatCLP(item.price * item.quantity)}</span>
+      {order.address && <p style={{margin:"4px 0",color:"#6b7280",fontSize:13}}>📍 {order.address}</p>}
+      {order.customer_phone && <p style={{margin:"4px 0",color:"#6b7280",fontSize:13}}>📞 {order.customer_phone}</p>}
+      <div style={{background:"#f9fafb",borderRadius:8,padding:10,margin:"8px 0"}}>
+        {(order.order_items||[]).map((it,i) => (
+          <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"2px 0"}}>
+            <span>{it.quantity}× {it.product_name}</span><span>{fmt(it.price*it.quantity)}</span>
           </div>
         ))}
       </div>
-
-      {order.notes && (
-        <p style={styles.orderNotes}>📝 {order.notes}</p>
-      )}
-
-      <div style={styles.orderCardFooter}>
-        <span style={{ fontWeight: 700, fontSize: 16 }}>{formatCLP(order.total)}</span>
-        {!readonly && nextStatus[order.status] && (
-          <button
-            style={styles.btnSuccess}
-            onClick={() => onUpdateStatus(order.id, nextStatus[order.status])}
-          >
-            {nextLabel[order.status]}
-          </button>
-        )}
-        {!readonly && order.status !== "cancelado" && order.status !== "entregado" && (
-          <button
-            style={styles.btnDanger}
-            onClick={() => onUpdateStatus(order.id, "cancelado")}
-          >
-            Cancelar
-          </button>
-        )}
+      {order.notes && <p style={{color:"#6b7280",fontSize:13,background:"#fffbeb",borderRadius:6,padding:"6px 10px",margin:"6px 0"}}>📝 {order.notes}</p>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,gap:8}}>
+        <span style={{fontWeight:700,fontSize:16}}>{fmt(order.total)}</span>
+        {!readonly && nextSt[order.status] && <button onClick={()=>onUpdate(order.id,nextSt[order.status])} style={{background:"#10b981",color:"white",border:"none",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:13}}>{nextLbl[order.status]}</button>}
+        {!readonly && !["cancelado","entregado"].includes(order.status) && <button onClick={()=>onUpdate(order.id,"cancelado")} style={{background:"#fee2e2",color:"#ef4444",border:"none",borderRadius:8,padding:"8px 10px",cursor:"pointer",fontWeight:600,fontSize:13}}>✕</button>}
       </div>
     </div>
   );
 }
 
-// =============================================
-// CUADRE DEL DÍA
-// =============================================
-function CuadreDiario({ orders }) {
-  const entregados = orders.filter((o) => o.status === "entregado");
-  const cancelados = orders.filter((o) => o.status === "cancelado");
-  const totalVentas = entregados.reduce((s, o) => s + o.total, 0);
-  const deliveries = entregados.filter((o) => o.delivery_type === "delivery");
-  const pickups = entregados.filter((o) => o.delivery_type === "pickup");
-
-  // Productos más vendidos
-  const productMap = {};
-  entregados.forEach((o) => {
-    (o.order_items || []).forEach((item) => {
-      if (!productMap[item.product_name]) {
-        productMap[item.product_name] = { qty: 0, total: 0 };
-      }
-      productMap[item.product_name].qty += item.quantity;
-      productMap[item.product_name].total += item.price * item.quantity;
-    });
-  });
-  const topProducts = Object.entries(productMap)
-    .sort((a, b) => b[1].total - a[1].total)
-    .slice(0, 5);
-
-  const statCard = (label, value, sub, color = "#1f2937") => (
-    <div style={{ ...styles.statCard, borderTop: `3px solid ${color}` }}>
-      <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>{label}</p>
-      <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 700, color }}>{value}</p>
-      {sub && <p style={{ margin: 0, color: "#9ca3af", fontSize: 12 }}>{sub}</p>}
+/* ── CUADRE ── */
+function Cuadre({ orders }) {
+  const ent = orders.filter(o=>o.status==="entregado");
+  const can = orders.filter(o=>o.status==="cancelado");
+  const total = ent.reduce((s,o)=>s+o.total,0);
+  const del = ent.filter(o=>o.delivery_type==="delivery");
+  const pic = ent.filter(o=>o.delivery_type==="pickup");
+  const prodMap = {};
+  ent.forEach(o=>(o.order_items||[]).forEach(it=>{
+    if(!prodMap[it.product_name]) prodMap[it.product_name]={qty:0,total:0};
+    prodMap[it.product_name].qty+=it.quantity; prodMap[it.product_name].total+=it.price*it.quantity;
+  }));
+  const top = Object.entries(prodMap).sort((a,b)=>b[1].total-a[1].total).slice(0,5);
+  const SC = ({label,value,sub,color="#1f2937"}) => (
+    <div style={{background:"white",borderRadius:12,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",borderTop:`3px solid ${color}`}}>
+      <p style={{margin:0,color:"#6b7280",fontSize:13}}>{label}</p>
+      <p style={{margin:"4px 0 0",fontSize:22,fontWeight:700,color}}>{value}</p>
+      {sub&&<p style={{margin:0,color:"#9ca3af",fontSize:12}}>{sub}</p>}
     </div>
   );
-
   return (
-    <div style={{ padding: 16 }}>
-      <h3 style={{ marginBottom: 16 }}>
-        Resumen · {new Date().toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })}
-      </h3>
-
-      <div style={styles.statsGrid}>
-        {statCard("Ventas del día", formatCLP(totalVentas), `${entregados.length} pedidos`, "#10b981")}
-        {statCard("Delivery", `${deliveries.length}`, formatCLP(deliveries.reduce((s, o) => s + o.total, 0)), "#3b82f6")}
-        {statCard("Retiro en local", `${pickups.length}`, formatCLP(pickups.reduce((s, o) => s + o.total, 0)), "#8b5cf6")}
-        {statCard("Cancelados", `${cancelados.length}`, "", "#ef4444")}
+    <div style={{padding:16}}>
+      <h3 style={{marginBottom:16}}>{new Date().toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"})}</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:24}}>
+        <SC label="Ventas" value={fmt(total)} sub={`${ent.length} pedidos`} color="#10b981"/>
+        <SC label="Delivery" value={del.length} sub={fmt(del.reduce((s,o)=>s+o.total,0))} color="#3b82f6"/>
+        <SC label="Retiro" value={pic.length} sub={fmt(pic.reduce((s,o)=>s+o.total,0))} color="#8b5cf6"/>
+        <SC label="Cancelados" value={can.length} color="#ef4444"/>
       </div>
-
-      {topProducts.length > 0 && (
+      {ent.length>0 && <p style={{fontSize:14,color:"#6b7280",marginBottom:16}}>Ticket promedio: <strong style={{color:"#1f2937",fontSize:18}}>{fmt(Math.round(total/ent.length))}</strong></p>}
+      {top.length>0 && (
         <>
-          <h4 style={{ marginTop: 24, marginBottom: 12 }}>Productos más vendidos</h4>
-          <div style={styles.topProductsTable}>
-            <div style={styles.tableHeader}>
-              <span>Producto</span>
-              <span>Cant.</span>
-              <span>Total</span>
+          <h4 style={{marginBottom:10}}>Más vendidos</h4>
+          <div style={{background:"white",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 60px 100px",padding:"10px 16px",background:"#f9fafb",fontWeight:700,fontSize:13,color:"#6b7280"}}>
+              <span>Producto</span><span>Cant.</span><span>Total</span>
             </div>
-            {topProducts.map(([name, data]) => (
-              <div key={name} style={styles.tableRow}>
-                <span>{name}</span>
-                <span>{data.qty}</span>
-                <span>{formatCLP(data.total)}</span>
+            {top.map(([name,d]) => (
+              <div key={name} style={{display:"grid",gridTemplateColumns:"1fr 60px 100px",padding:"10px 16px",borderTop:"1px solid #f3f4f6",fontSize:14}}>
+                <span>{name}</span><span>{d.qty}</span><span>{fmt(d.total)}</span>
               </div>
             ))}
           </div>
         </>
       )}
-
-      {entregados.length > 0 && (
-        <>
-          <h4 style={{ marginTop: 24, marginBottom: 12 }}>Ticket promedio</h4>
-          <p style={{ fontSize: 20, fontWeight: 700, color: "#1f2937" }}>
-            {formatCLP(Math.round(totalVentas / entregados.length))}
-          </p>
-        </>
-      )}
     </div>
   );
 }
 
-// =============================================
-// VISTA ADMIN
-// =============================================
+/* ── ADMIN ── */
 function AdminView({ onLogout }) {
   const [tab, setTab] = useState("productos");
   const products = useProducts();
   const { settings, updateSettings } = useSettings();
-  const [editProduct, setEditProduct] = useState(null);
-  const [showNewProduct, setShowNewProduct] = useState(false);
-
-  const toggleAvailable = async (product) => {
-    await supabase
-      .from("products")
-      .update({ available: !product.available })
-      .eq("id", product.id);
-  };
-
-  const deleteProduct = async (id) => {
-    if (!confirm("¿Eliminar este producto?")) return;
-    await supabase.from("products").delete().eq("id", id);
-  };
-
-  const categories = [...new Set(products.map((p) => p.category))];
-
+  const [edit, setEdit] = useState(null);
+  const [newProd, setNewProd] = useState(false);
+  const toggleAvail = async (p) => supabase.from("products").update({available:!p.available}).eq("id",p.id);
+  const delProd = async (id) => { if(!confirm("¿Eliminar?")) return; supabase.from("products").delete().eq("id",id); };
+  const cats = [...new Set(products.map(p=>p.category))];
   return (
-    <div style={styles.pageWrap}>
-      <header style={styles.pageHeader}>
-        <h2 style={{ margin: 0 }}>⚙️ Administración</h2>
-        <button style={styles.logoutBtn} onClick={onLogout}>
-          Salir
-        </button>
+    <div style={{minHeight:"100vh",background:"#f0ede8"}}>
+      <header style={{background:C.negro,borderBottom:`2px solid ${C.rojo}`,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <h2 style={{margin:0,color:C.blanco,fontWeight:800}}>⚙️ Administración</h2>
+        <button onClick={onLogout} style={{background:"rgba(255,255,255,0.1)",color:C.blanco,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer"}}>Salir</button>
       </header>
-
-      <div style={styles.tabs}>
-        <button
-          style={{ ...styles.tab, ...(tab === "productos" ? styles.tabActive : {}) }}
-          onClick={() => setTab("productos")}
-        >
-          Productos
-        </button>
-        <button
-          style={{ ...styles.tab, ...(tab === "pedidos" ? styles.tabActive : {}) }}
-          onClick={() => setTab("pedidos")}
-        >
-          Pedidos
-        </button>
-        <button
-          style={{ ...styles.tab, ...(tab === "config" ? styles.tabActive : {}) }}
-          onClick={() => setTab("config")}
-        >
-          Configuración
-        </button>
+      <div style={{display:"flex",background:"white",borderBottom:"1px solid #e5e7eb",overflowX:"auto"}}>
+        {[["productos","Productos"],["pedidos","Pedidos"],["config","Configuración"]].map(([k,l]) => (
+          <button key={k} onClick={()=>setTab(k)} style={{padding:"12px 20px",background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap",fontWeight:tab===k?700:500,fontSize:14,color:tab===k?C.rojo:"#6b7280",borderBottom:tab===k?`2px solid ${C.rojo}`:"2px solid transparent"}}>{l}</button>
+        ))}
       </div>
-
-      {tab === "productos" && (
-        <div style={{ padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-            <h3 style={{ margin: 0 }}>Productos ({products.length})</h3>
-            <button style={styles.btnPrimary} onClick={() => setShowNewProduct(true)}>
-              + Nuevo
-            </button>
+      {tab==="productos" && (
+        <div style={{padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+            <h3 style={{margin:0}}>Productos ({products.length})</h3>
+            <button style={{background:C.rojo,color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontWeight:700}} onClick={()=>setNewProd(true)}>+ Nuevo</button>
           </div>
-
-          {showNewProduct && (
-            <ProductForm
-              onSave={async (data) => {
-                await supabase.from("products").insert(data);
-                setShowNewProduct(false);
-              }}
-              onCancel={() => setShowNewProduct(false)}
-            />
-          )}
-
-          {editProduct && (
-            <ProductForm
-              product={editProduct}
-              onSave={async (data) => {
-                await supabase.from("products").update(data).eq("id", editProduct.id);
-                setEditProduct(null);
-              }}
-              onCancel={() => setEditProduct(null)}
-            />
-          )}
-
-          {categories.map((cat) => (
-            <div key={cat} style={{ marginBottom: 24 }}>
-              <h4 style={{ color: "#6b7280", marginBottom: 8 }}>{cat}</h4>
-              {products
-                .filter((p) => p.category === cat)
-                .map((product) => (
-                  <div key={product.id} style={styles.adminProductRow}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 600 }}>{product.name}</p>
-                      <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>
-                        {formatCLP(product.price)}
-                        {product.description && ` · ${product.description}`}
-                      </p>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <button
-                        style={{
-                          ...styles.toggleAvailBtn,
-                          backgroundColor: product.available ? "#d1fae5" : "#fee2e2",
-                          color: product.available ? "#10b981" : "#ef4444",
-                        }}
-                        onClick={() => toggleAvailable(product)}
-                      >
-                        {product.available ? "Activo" : "Inactivo"}
-                      </button>
-                      <button style={styles.editBtn} onClick={() => setEditProduct(product)}>
-                        ✏️
-                      </button>
-                      <button style={styles.deleteBtn} onClick={() => deleteProduct(product.id)}>
-                        🗑️
-                      </button>
-                    </div>
+          {newProd && <ProdForm onSave={async d=>{await supabase.from("products").insert(d);setNewProd(false);}} onCancel={()=>setNewProd(false)}/>}
+          {edit && <ProdForm product={edit} onSave={async d=>{await supabase.from("products").update(d).eq("id",edit.id);setEdit(null);}} onCancel={()=>setEdit(null)}/>}
+          {cats.map(cat => (
+            <div key={cat} style={{marginBottom:24}}>
+              <h4 style={{color:"#6b7280",marginBottom:8}}>{cat}</h4>
+              {products.filter(p=>p.category===cat).map(p => (
+                <div key={p.id} style={{background:"white",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12,marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+                  <img src={getImg(p)} alt={p.name} style={{width:52,height:52,objectFit:"cover",borderRadius:8,flexShrink:0}} onError={e=>{e.target.src=DEFAULT_IMAGES.default;}}/>
+                  <div style={{flex:1}}>
+                    <p style={{margin:0,fontWeight:600}}>{p.name}</p>
+                    <p style={{margin:0,color:"#6b7280",fontSize:13}}>{fmt(p.price)}{p.description&&` · ${p.description}`}</p>
                   </div>
-                ))}
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <button onClick={()=>toggleAvail(p)} style={{border:"none",borderRadius:20,padding:"4px 12px",cursor:"pointer",fontWeight:600,fontSize:12,background:p.available?"#d1fae5":"#fee2e2",color:p.available?"#10b981":"#ef4444"}}>{p.available?"Activo":"Inactivo"}</button>
+                    <button onClick={()=>setEdit(p)} style={{background:"#f3f4f6",border:"none",borderRadius:8,padding:"6px 8px",cursor:"pointer"}}>✏️</button>
+                    <button onClick={()=>delProd(p.id)} style={{background:"#fee2e2",border:"none",borderRadius:8,padding:"6px 8px",cursor:"pointer"}}>🗑️</button>
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
         </div>
       )}
-
-      {tab === "pedidos" && <AdminPedidos />}
-
-      {tab === "config" && settings && (
-        <SettingsForm settings={settings} onSave={updateSettings} />
-      )}
+      {tab==="pedidos" && <AdminPedidos/>}
+      {tab==="config" && settings && <ConfigForm settings={settings} onSave={updateSettings}/>}
     </div>
   );
 }
 
-// =============================================
-// FORMULARIO PRODUCTO
-// =============================================
-function ProductForm({ product, onSave, onCancel }) {
-  const [form, setForm] = useState({
-    name: product?.name || "",
-    description: product?.description || "",
-    category: product?.category || "",
-    price: product?.price || "",
-    available: product?.available ?? true,
-  });
-
-  const handleSave = () => {
-    if (!form.name || !form.category || !form.price) return alert("Completa todos los campos");
-    onSave({ ...form, price: parseInt(form.price) });
+function ProdForm({ product, onSave, onCancel }) {
+  const [form, setForm] = useState({name:product?.name||"",description:product?.description||"",category:product?.category||"",price:product?.price||"",available:product?.available??true,image_url:product?.image_url||""});
+  const [preview, setPreview] = useState(product?.image_url||"");
+  const handleImg = (e) => {
+    const file = e.target.files[0]; if(!file) return;
+    const r = new FileReader();
+    r.onload = ev => { setPreview(ev.target.result); setForm(f=>({...f,image_url:ev.target.result})); };
+    r.readAsDataURL(file);
   };
-
+  const go = () => { if(!form.name||!form.category||!form.price) return alert("Completa todos los campos"); onSave({...form,price:parseInt(form.price)}); };
   return (
-    <div style={styles.formCard}>
-      <h4 style={{ marginBottom: 12 }}>{product ? "Editar producto" : "Nuevo producto"}</h4>
-      <input
-        style={styles.input}
-        placeholder="Nombre *"
-        value={form.name}
-        onChange={(e) => setForm({ ...form, name: e.target.value })}
-      />
-      <input
-        style={styles.input}
-        placeholder="Categoría *"
-        value={form.category}
-        onChange={(e) => setForm({ ...form, category: e.target.value })}
-      />
-      <input
-        style={styles.input}
-        placeholder="Descripción"
-        value={form.description}
-        onChange={(e) => setForm({ ...form, description: e.target.value })}
-      />
-      <input
-        style={styles.input}
-        placeholder="Precio (CLP) *"
-        type="number"
-        value={form.price}
-        onChange={(e) => setForm({ ...form, price: e.target.value })}
-      />
-      <div style={{ display: "flex", gap: 8 }}>
-        <button style={styles.btnPrimary} onClick={handleSave}>
-          Guardar
-        </button>
-        <button style={styles.btnSecondary} onClick={onCancel}>
-          Cancelar
-        </button>
+    <div style={{background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:12,padding:16,marginBottom:24}}>
+      <h4 style={{marginBottom:12}}>{product?"Editar producto":"Nuevo producto"}</h4>
+      <div style={{marginBottom:12,textAlign:"center"}}>
+        <img src={preview||(DEFAULT_IMAGES[form.category]||DEFAULT_IMAGES.default)} alt="preview" style={{width:"100%",height:150,objectFit:"cover",borderRadius:10,border:"1px solid #e5e7eb"}}/>
+        <div style={{marginTop:8,display:"flex",gap:8,justifyContent:"center"}}>
+          <label style={{padding:"7px 14px",background:C.negro,color:"white",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+            📷 Subir imagen<input type="file" accept="image/*" style={{display:"none"}} onChange={handleImg}/>
+          </label>
+          {preview && <button onClick={()=>{setPreview("");setForm(f=>({...f,image_url:""}));}} style={{padding:"7px 12px",background:"#fee2e2",border:"none",borderRadius:8,cursor:"pointer",fontSize:13}}>Quitar</button>}
+        </div>
+        <p style={{color:"#9ca3af",fontSize:11,marginTop:4}}>Sin imagen usa la referencial de la categoría</p>
+      </div>
+      {[["Nombre *","name"],["Categoría *","category"],["Descripción","description"]].map(([ph,k]) => (
+        <input key={k} style={inpLight} placeholder={ph} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})}/>
+      ))}
+      <input style={inpLight} placeholder="Precio (CLP) *" type="number" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/>
+      <div style={{display:"flex",gap:8}}>
+        <button style={{background:C.rojo,color:"white",border:"none",borderRadius:10,padding:"11px 20px",fontWeight:700,fontSize:15,cursor:"pointer",flex:1}} onClick={go}>Guardar</button>
+        <button style={{background:"#f3f4f6",color:"#1f2937",border:"none",borderRadius:10,padding:"11px 20px",fontWeight:600,fontSize:15,cursor:"pointer"}} onClick={onCancel}>Cancelar</button>
       </div>
     </div>
   );
 }
 
-// =============================================
-// ADMIN PEDIDOS
-// =============================================
 function AdminPedidos() {
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().split("T")[0]);
-  const { orders } = useOrders({ date: dateFilter });
-
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const { orders } = useOrders({ date });
+  const upd = (id,status) => supabase.from("orders").update({status}).eq("id",id);
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontWeight: 600, marginRight: 8 }}>Fecha:</label>
-        <input
-          type="date"
-          style={styles.input}
-          value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
-        />
+    <div style={{padding:16}}>
+      <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+        <label style={{fontWeight:600}}>Fecha:</label>
+        <input type="date" style={{...inpLight,marginBottom:0,width:"auto"}} value={date} onChange={e=>setDate(e.target.value)}/>
       </div>
-      <p style={{ color: "#6b7280", marginBottom: 16 }}>
-        {orders.length} pedidos · Total:{" "}
-        {formatCLP(
-          orders
-            .filter((o) => o.status === "entregado")
-            .reduce((s, o) => s + o.total, 0)
-        )}
-      </p>
-      <div style={styles.ordersGrid}>
-        {orders.map((order) => (
-          <OrderCard
-            key={order.id}
-            order={order}
-            onUpdateStatus={async (id, status) => {
-              await supabase.from("orders").update({ status }).eq("id", id);
-            }}
-          />
-        ))}
+      <p style={{color:"#6b7280",marginBottom:16}}>{orders.length} pedidos · Entregado: {fmt(orders.filter(o=>o.status==="entregado").reduce((s,o)=>s+o.total,0))}</p>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16}}>
+        {orders.map(o=><OrderCard key={o.id} order={o} onUpdate={upd}/>)}
       </div>
     </div>
   );
 }
 
-// =============================================
-// CONFIGURACIÓN
-// =============================================
-function SettingsForm({ settings, onSave }) {
-  const [form, setForm] = useState({ ...settings });
+function ConfigForm({ settings, onSave }) {
+  const [form, setForm] = useState({...settings});
   const [saved, setSaved] = useState(false);
-
-  const handleSave = async () => {
-    await onSave({
-      business_name: form.business_name,
-      whatsapp: form.whatsapp,
-      delivery_cost: parseInt(form.delivery_cost),
-      min_order: parseInt(form.min_order),
-      delivery_enabled: form.delivery_enabled,
-      open: form.open,
-      hours: form.hours,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const go = async () => {
+    await onSave({business_name:form.business_name,whatsapp:form.whatsapp,delivery_cost:parseInt(form.delivery_cost),min_order:parseInt(form.min_order),delivery_enabled:form.delivery_enabled,open:form.open,hours:form.hours});
+    setSaved(true); setTimeout(()=>setSaved(false),2000);
   };
-
   return (
-    <div style={{ padding: 16, maxWidth: 480 }}>
-      <h3 style={{ marginBottom: 16 }}>Configuración del negocio</h3>
-
-      <label style={styles.label}>Nombre del negocio</label>
-      <input
-        style={styles.input}
-        value={form.business_name}
-        onChange={(e) => setForm({ ...form, business_name: e.target.value })}
-      />
-
-      <label style={styles.label}>Horario (texto)</label>
-      <input
-        style={styles.input}
-        value={form.hours}
-        onChange={(e) => setForm({ ...form, hours: e.target.value })}
-      />
-
-      <label style={styles.label}>Costo de delivery (CLP)</label>
-      <input
-        style={styles.input}
-        type="number"
-        value={form.delivery_cost}
-        onChange={(e) => setForm({ ...form, delivery_cost: e.target.value })}
-      />
-
-      <label style={styles.label}>Pedido mínimo (CLP)</label>
-      <input
-        style={styles.input}
-        type="number"
-        value={form.min_order}
-        onChange={(e) => setForm({ ...form, min_order: e.target.value })}
-      />
-
-      <div style={styles.switchRow}>
-        <span>Delivery activo</span>
-        <input
-          type="checkbox"
-          checked={form.delivery_enabled}
-          onChange={(e) => setForm({ ...form, delivery_enabled: e.target.checked })}
-        />
-      </div>
-
-      <div style={styles.switchRow}>
-        <span>Local abierto</span>
-        <input
-          type="checkbox"
-          checked={form.open}
-          onChange={(e) => setForm({ ...form, open: e.target.checked })}
-        />
-      </div>
-
-      <button style={styles.btnPrimary} onClick={handleSave}>
-        {saved ? "✓ Guardado" : "Guardar cambios"}
-      </button>
+    <div style={{padding:16,maxWidth:480}}>
+      <h3 style={{marginBottom:16}}>Configuración</h3>
+      {[["Nombre del negocio","business_name","text"],["Horario","hours","text"],["Costo delivery (CLP)","delivery_cost","number"],["Pedido mínimo (CLP)","min_order","number"]].map(([lbl,k,t]) => (
+        <div key={k}>
+          <label style={{display:"block",fontWeight:600,fontSize:13,color:"#374151",marginBottom:4}}>{lbl}</label>
+          <input style={inpLight} type={t} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})}/>
+        </div>
+      ))}
+      {[["Delivery activo","delivery_enabled"],["Local abierto","open"]].map(([lbl,k]) => (
+        <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid #f3f4f6"}}>
+          <span style={{fontWeight:600}}>{lbl}</span>
+          <input type="checkbox" checked={form[k]} onChange={e=>setForm({...form,[k]:e.target.checked})} style={{width:18,height:18,cursor:"pointer"}}/>
+        </div>
+      ))}
+      <button style={{...btnRed,marginTop:20,background:saved?"#10b981":C.rojo}} onClick={go}>{saved?"✓ Guardado":"Guardar cambios"}</button>
     </div>
   );
 }
 
-// =============================================
-// ESTILOS
-// =============================================
-const styles = {
-  // Login
-  loginWrap: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
-  },
-  loginCard: {
-    background: "white",
-    borderRadius: 16,
-    padding: 32,
-    width: 320,
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-  },
-  loginLogo: { fontSize: 48, textAlign: "center" },
-  loginTitle: { textAlign: "center", margin: 0, color: "#1f2937" },
-
-  // Cliente
-  clienteWrap: {
-    maxWidth: 480,
-    margin: "0 auto",
-    minHeight: "100vh",
-    background: "#f9fafb",
-    paddingBottom: 80,
-  },
-  clienteHeader: {
-    background: "#1a1a2e",
-    color: "white",
-    padding: "16px 20px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    position: "sticky",
-    top: 0,
-    zIndex: 100,
-  },
-  clienteTitle: { margin: 0, fontSize: 22, color: "white" },
-  catScroll: {
-    display: "flex",
-    gap: 8,
-    padding: "12px 16px",
-    overflowX: "auto",
-    background: "white",
-    borderBottom: "1px solid #e5e7eb",
-  },
-  catBtn: {
-    whiteSpace: "nowrap",
-    padding: "6px 14px",
-    borderRadius: 20,
-    border: "1px solid #e5e7eb",
-    background: "white",
-    cursor: "pointer",
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  catBtnActive: {
-    background: "#1a1a2e",
-    color: "white",
-    borderColor: "#1a1a2e",
-  },
-  productsGrid: { padding: 16, display: "flex", flexDirection: "column", gap: 12 },
-  productCard: {
-    background: "white",
-    borderRadius: 12,
-    padding: 16,
-    display: "flex",
-    gap: 12,
-    alignItems: "flex-start",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-  },
-  productEmoji: { fontSize: 36, flexShrink: 0 },
-  productInfo: { flex: 1 },
-  productName: { margin: 0, fontWeight: 600, color: "#1f2937" },
-  productDesc: { margin: "2px 0", color: "#9ca3af", fontSize: 12 },
-  productPrice: { margin: "4px 0 0", fontWeight: 700, color: "#1a1a2e", fontSize: 16 },
-  productActions: { flexShrink: 0 },
-
-  // Cart
-  cartBtn: {
-    position: "relative",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    fontSize: 24,
-    color: "white",
-  },
-  cartBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    background: "#ef4444",
-    color: "white",
-    borderRadius: "50%",
-    width: 18,
-    height: 18,
-    fontSize: 11,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cartOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.5)",
-    zIndex: 200,
-    display: "flex",
-    alignItems: "flex-end",
-  },
-  cartDrawer: {
-    background: "white",
-    width: "100%",
-    maxWidth: 480,
-    margin: "0 auto",
-    borderRadius: "20px 20px 0 0",
-    padding: 20,
-    maxHeight: "80vh",
-    overflowY: "auto",
-  },
-  cartHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  closeBtn: {
-    background: "none",
-    border: "none",
-    fontSize: 18,
-    cursor: "pointer",
-    color: "#6b7280",
-  },
-  cartItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "12px 0",
-    borderBottom: "1px solid #f3f4f6",
-  },
-  cartTotal: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontWeight: 700,
-    padding: "12px 0",
-    borderTop: "1px solid #e5e7eb",
-  },
-  fabCart: {
-    position: "fixed",
-    bottom: 20,
-    left: "50%",
-    transform: "translateX(-50%)",
-    background: "#1a1a2e",
-    color: "white",
-    border: "none",
-    borderRadius: 40,
-    padding: "14px 24px",
-    fontWeight: 700,
-    fontSize: 15,
-    cursor: "pointer",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-    zIndex: 100,
-    whiteSpace: "nowrap",
-  },
-
-  // Qty
-  qtyControl: { display: "flex", alignItems: "center", gap: 8 },
-  qtyBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: "50%",
-    border: "1px solid #e5e7eb",
-    background: "white",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: 16,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qtyNum: { fontWeight: 700, minWidth: 20, textAlign: "center" },
-  addBtn: {
-    background: "#1a1a2e",
-    color: "white",
-    border: "none",
-    borderRadius: 8,
-    padding: "8px 14px",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 600,
-  },
-
-  // Form
-  formWrap: { maxWidth: 480, margin: "0 auto", padding: 20, minHeight: "100vh", background: "white" },
-  backBtn: {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    color: "#6b7280",
-    fontSize: 15,
-    marginBottom: 16,
-    padding: 0,
-  },
-  toggleGroup: { display: "flex", gap: 8, marginBottom: 16 },
-  toggleBtn: {
-    flex: 1,
-    padding: 12,
-    border: "2px solid #e5e7eb",
-    borderRadius: 10,
-    background: "white",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: 14,
-  },
-  toggleBtnActive: { borderColor: "#1a1a2e", background: "#f0f0f5" },
-  orderSummary: {
-    background: "#f9fafb",
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
-    marginBottom: 16,
-  },
-  summaryRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "4px 0",
-    fontSize: 14,
-  },
-
-  // Success
-  successWrap: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#f9fafb",
-  },
-  successCard: {
-    background: "white",
-    borderRadius: 16,
-    padding: 40,
-    textAlign: "center",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
-  },
-
-  // Admin/Caja pages
-  pageWrap: { minHeight: "100vh", background: "#f9fafb" },
-  pageHeader: {
-    background: "#1a1a2e",
-    color: "white",
-    padding: "16px 20px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  logoutBtn: {
-    background: "rgba(255,255,255,0.15)",
-    color: "white",
-    border: "none",
-    borderRadius: 8,
-    padding: "6px 14px",
-    cursor: "pointer",
-    fontSize: 13,
-  },
-  tabs: {
-    display: "flex",
-    background: "white",
-    borderBottom: "1px solid #e5e7eb",
-    overflowX: "auto",
-  },
-  tab: {
-    padding: "12px 20px",
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    color: "#6b7280",
-    fontWeight: 500,
-    whiteSpace: "nowrap",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 14,
-  },
-  tabActive: {
-    color: "#1a1a2e",
-    borderBottom: "2px solid #1a1a2e",
-    fontWeight: 700,
-  },
-  tabBadge: {
-    background: "#ef4444",
-    color: "white",
-    borderRadius: 10,
-    padding: "2px 7px",
-    fontSize: 11,
-    fontWeight: 700,
-  },
-
-  // Orders
-  ordersGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-    gap: 16,
-    padding: 16,
-  },
-  orderCard: {
-    background: "white",
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  orderCardHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  statusBadge: {
-    padding: "3px 10px",
-    borderRadius: 12,
-    fontSize: 12,
-    fontWeight: 700,
-  },
-  orderItems: {
-    background: "#f9fafb",
-    borderRadius: 8,
-    padding: 10,
-    margin: "8px 0",
-  },
-  orderItemRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 13,
-    padding: "2px 0",
-  },
-  orderNotes: {
-    color: "#6b7280",
-    fontSize: 13,
-    background: "#fffbeb",
-    borderRadius: 6,
-    padding: "6px 10px",
-    margin: "6px 0",
-  },
-  orderCardFooter: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 12,
-    gap: 8,
-  },
-  emptyState: {
-    gridColumn: "1/-1",
-    textAlign: "center",
-    padding: 60,
-    color: "#9ca3af",
-  },
-
-  // Cuadre
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-    gap: 12,
-    marginBottom: 8,
-  },
-  statCard: {
-    background: "white",
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-  },
-  topProductsTable: {
-    background: "white",
-    borderRadius: 12,
-    overflow: "hidden",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-  },
-  tableHeader: {
-    display: "grid",
-    gridTemplateColumns: "1fr 60px 100px",
-    gap: 8,
-    padding: "10px 16px",
-    background: "#f9fafb",
-    fontWeight: 700,
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  tableRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 60px 100px",
-    gap: 8,
-    padding: "10px 16px",
-    borderTop: "1px solid #f3f4f6",
-    fontSize: 14,
-  },
-
-  // Admin productos
-  adminProductRow: {
-    background: "white",
-    borderRadius: 10,
-    padding: "12px 16px",
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 8,
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-  },
-  toggleAvailBtn: {
-    border: "none",
-    borderRadius: 20,
-    padding: "4px 12px",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: 12,
-  },
-  editBtn: {
-    background: "#f3f4f6",
-    border: "none",
-    borderRadius: 8,
-    padding: "6px 8px",
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  deleteBtn: {
-    background: "#fee2e2",
-    border: "none",
-    borderRadius: 8,
-    padding: "6px 8px",
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  formCard: {
-    background: "#f9fafb",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-
-  // Config
-  label: { display: "block", fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 4 },
-  switchRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 0",
-    borderBottom: "1px solid #f3f4f6",
-    marginBottom: 8,
-  },
-
-  // Buttons
-  btnPrimary: {
-    background: "#1a1a2e",
-    color: "white",
-    border: "none",
-    borderRadius: 10,
-    padding: "12px 20px",
-    fontWeight: 700,
-    fontSize: 15,
-    cursor: "pointer",
-    width: "100%",
-  },
-  btnSecondary: {
-    background: "#f3f4f6",
-    color: "#1f2937",
-    border: "none",
-    borderRadius: 10,
-    padding: "12px 20px",
-    fontWeight: 600,
-    fontSize: 15,
-    cursor: "pointer",
-    flex: 1,
-  },
-  btnSuccess: {
-    background: "#10b981",
-    color: "white",
-    border: "none",
-    borderRadius: 8,
-    padding: "8px 14px",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: 13,
-  },
-  btnDanger: {
-    background: "#fee2e2",
-    color: "#ef4444",
-    border: "none",
-    borderRadius: 8,
-    padding: "8px 12px",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: 13,
-  },
-
-  // Inputs
-  input: {
-    width: "100%",
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    fontSize: 15,
-    marginBottom: 12,
-    boxSizing: "border-box",
-    outline: "none",
-    fontFamily: "inherit",
-  },
+/* ── ESTILOS BASE ── */
+const inp = {
+  width:"100%",padding:"11px 14px",borderRadius:10,
+  border:`1px solid ${C.grisLinea}`,background:C.negroSuave,
+  color:C.blanco,fontSize:15,marginBottom:12,
+  boxSizing:"border-box",outline:"none",fontFamily:"inherit",
+};
+const inpLight = {
+  width:"100%",padding:"10px 14px",borderRadius:10,
+  border:"1px solid #e5e7eb",background:"white",
+  color:"#1f2937",fontSize:15,marginBottom:12,
+  boxSizing:"border-box",outline:"none",fontFamily:"inherit",
+};
+const btnRed = {
+  background:C.rojo,color:C.blanco,border:"none",borderRadius:10,
+  padding:"13px 20px",fontWeight:800,fontSize:15,cursor:"pointer",
+  width:"100%",letterSpacing:0.5,boxShadow:`0 4px 16px ${C.rojoGlow}`,
+};
+const qtyBtn = {
+  width:28,height:28,borderRadius:"50%",border:`1px solid ${C.grisLinea}`,
+  background:C.negroSuave,cursor:"pointer",fontWeight:700,fontSize:16,
+  color:C.blanco,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,
 };
