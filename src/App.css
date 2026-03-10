@@ -17,6 +17,25 @@ const CREDENTIALS = {
 };
 
 // =============================================
+// IMÁGENES REFERENCIALES POR DEFECTO
+// =============================================
+const DEFAULT_IMAGES = {
+  Pizzas: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&q=80",
+  Acompañamientos: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&q=80",
+  Bebidas: "https://images.unsplash.com/photo-1527960471264-932f39eb5846?w=400&q=80",
+  Entradas: "https://images.unsplash.com/photo-1541014741259-de529411b96a?w=400&q=80",
+  Postres: "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=400&q=80",
+  Cócteles: "https://images.unsplash.com/photo-1536935338788-846bb9981813?w=400&q=80",
+  Sushi: "https://images.unsplash.com/photo-1617196034738-26c5f7c977ce?w=400&q=80",
+  default: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80",
+};
+
+const getProductImage = (product) => {
+  if (product.image_url) return product.image_url;
+  return DEFAULT_IMAGES[product.category] || DEFAULT_IMAGES.default;
+};
+
+// =============================================
 // UTILIDADES
 // =============================================
 const formatCLP = (n) =>
@@ -360,36 +379,31 @@ function ClienteView() {
           const inCart = cart.find((i) => i.id === product.id);
           return (
             <div key={product.id} style={styles.productCard}>
-              <div style={styles.productEmoji}>
-                {product.category === "Pizzas"
-                  ? "🍕"
-                  : product.category === "Bebidas"
-                  ? "🥤"
-                  : "🍟"}
-              </div>
+              <img
+                src={getProductImage(product)}
+                alt={product.name}
+                style={styles.productImg}
+                onError={(e) => { e.target.src = DEFAULT_IMAGES.default; }}
+              />
               <div style={styles.productInfo}>
                 <p style={styles.productName}>{product.name}</p>
                 {product.description && (
                   <p style={styles.productDesc}>{product.description}</p>
                 )}
-                <p style={styles.productPrice}>{formatCLP(product.price)}</p>
-              </div>
-              <div style={styles.productActions}>
-                {inCart ? (
-                  <div style={styles.qtyControl}>
-                    <button style={styles.qtyBtn} onClick={() => removeFromCart(product.id)}>
-                      −
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                  <p style={{ ...styles.productPrice, margin: 0 }}>{formatCLP(product.price)}</p>
+                  {inCart ? (
+                    <div style={styles.qtyControl}>
+                      <button style={styles.qtyBtn} onClick={() => removeFromCart(product.id)}>−</button>
+                      <span style={styles.qtyNum}>{inCart.qty}</span>
+                      <button style={styles.qtyBtn} onClick={() => addToCart(product)}>+</button>
+                    </div>
+                  ) : (
+                    <button style={styles.addBtn} onClick={() => addToCart(product)}>
+                      + Agregar
                     </button>
-                    <span style={styles.qtyNum}>{inCart.qty}</span>
-                    <button style={styles.qtyBtn} onClick={() => addToCart(product)}>
-                      +
-                    </button>
-                  </div>
-                ) : (
-                  <button style={styles.addBtn} onClick={() => addToCart(product)}>
-                    Agregar
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -992,16 +1006,70 @@ function ProductForm({ product, onSave, onCancel }) {
     category: product?.category || "",
     price: product?.price || "",
     available: product?.available ?? true,
+    image_url: product?.image_url || "",
   });
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState(product?.image_url || "");
+
+  const handleImageFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target.result;
+      setPreview(base64);
+      setForm((f) => ({ ...f, image_url: base64 }));
+      setUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = () => {
     if (!form.name || !form.category || !form.price) return alert("Completa todos los campos");
     onSave({ ...form, price: parseInt(form.price) });
   };
 
+  const defaultImg = DEFAULT_IMAGES[form.category] || DEFAULT_IMAGES.default;
+
   return (
     <div style={styles.formCard}>
       <h4 style={{ marginBottom: 12 }}>{product ? "Editar producto" : "Nuevo producto"}</h4>
+
+      {/* Vista previa imagen */}
+      <div style={{ marginBottom: 12, textAlign: "center" }}>
+        <img
+          src={preview || defaultImg}
+          alt="preview"
+          style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 8, border: "1px solid #e5e7eb" }}
+        />
+        <label style={{
+          display: "inline-block",
+          marginTop: 8,
+          padding: "8px 16px",
+          background: "#1a1a2e",
+          color: "white",
+          borderRadius: 8,
+          cursor: "pointer",
+          fontSize: 13,
+          fontWeight: 600,
+        }}>
+          {uploading ? "Cargando..." : "📷 Subir imagen"}
+          <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageFile} />
+        </label>
+        {preview && (
+          <button
+            style={{ marginLeft: 8, background: "#fee2e2", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13 }}
+            onClick={() => { setPreview(""); setForm((f) => ({ ...f, image_url: "" })); }}
+          >
+            Quitar
+          </button>
+        )}
+        <p style={{ color: "#9ca3af", fontSize: 11, marginTop: 4 }}>
+          Si no subes imagen se usa la referencial de la categoría
+        </p>
+      </div>
+
       <input
         style={styles.input}
         placeholder="Nombre *"
@@ -1250,18 +1318,28 @@ const styles = {
     color: C.blanco,
     borderColor: C.rojo,
   },
-  productsGrid: { padding: 16, display: "flex", flexDirection: "column", gap: 10 },
+  productsGrid: {
+    padding: 16,
+    display: "grid",
+    gridTemplateColumns: "repeat(2, 1fr)",
+    gap: 12,
+  },
   productCard: {
     background: C.negroCard,
     borderRadius: 12,
-    padding: 16,
+    overflow: "hidden",
     display: "flex",
-    gap: 12,
-    alignItems: "flex-start",
+    flexDirection: "column",
     border: `1px solid ${C.grisLinea}`,
   },
-  productEmoji: { fontSize: 34, flexShrink: 0 },
-  productInfo: { flex: 1 },
+  productImg: {
+    width: "100%",
+    height: 160,
+    objectFit: "cover",
+    display: "block",
+    flexShrink: 0,
+  },
+  productInfo: { flex: 1, padding: "12px 14px 14px" },
   productName: { margin: 0, fontWeight: 700, color: C.blanco, fontSize: 15 },
   productDesc: { margin: "3px 0", color: C.grisTexto, fontSize: 12, lineHeight: 1.4 },
   productPrice: { margin: "6px 0 0", fontWeight: 800, color: C.amarillo, fontSize: 16 },
