@@ -1020,11 +1020,35 @@ function OrderCard({ order, onUpdate, readonly }) {
   const nextSt  = {pendiente:"preparando",preparando:"listo",listo:"entregado"};
   const nextLbl = {pendiente:"✓ Aceptar",preparando:"Listo para entregar →",listo:"Entregado ✓"};
 
+  // Genera mensaje WhatsApp según el estado
+  const waMsg = (status) => {
+    const nombre = order.customer_name?.split(" ")[0] || "Cliente";
+    const items = (order.order_items||[]).map(i=>`• ${i.quantity}× ${i.product_name}`).join("\n");
+    const msgs = {
+      preparando: `Hola ${nombre} 👋, confirmamos tu pedido en *Almíbar*:\n\n${items}\n\n*Total: ${fmt(order.total)}*\n\nEstamos preparando todo 👨‍🍳 ¡En breve estará listo!`,
+      listo:      `Hola ${nombre} 🚗, tu pedido de *Almíbar* ya está *en camino*!\n\n${items}\n\n*Total: ${fmt(order.total)}*\n\n¡Pronto llegará!`,
+      entregado:  `Hola ${nombre} ✅, tu pedido fue *entregado*. ¡Que lo disfrutes! 🍹\n\nGracias por elegir *Almíbar*.`,
+      cancelado:  `Hola ${nombre}, lamentablemente no podemos procesar tu pedido en este momento. Disculpa las molestias 🙏\n\n— *Almíbar*`,
+    };
+    return msgs[status] || "";
+  };
+
+  const openWA = (msg) => {
+    const phone = (order.customer_phone||"").replace(/\D/g,"");
+    const full = phone.startsWith("56") ? phone : "56" + phone;
+    window.open(`https://wa.me/${full}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
   const handleUpdate = async (id, status) => {
     setLoading(true);
     try {
       const { error } = await supabase.from("orders").update({ status }).eq("id", id);
-      if (error) alert("Error al actualizar: " + error.message);
+      if (error) { alert("Error al actualizar: " + error.message); return; }
+      // Al aceptar, ofrece enviar confirmación por WhatsApp
+      if (status === "preparando" && order.customer_phone) {
+        const msg = waMsg("preparando");
+        if (confirm("¿Enviar confirmación al cliente por WhatsApp?")) openWA(msg);
+      }
     } catch(e) {
       alert("Error de conexión");
     } finally {
@@ -1033,6 +1057,7 @@ function OrderCard({ order, onUpdate, readonly }) {
   };
 
   const borderColor = order.status === "pendiente" ? "#f59e0b" : order.status === "cancelado" ? "#ef4444" : "#e5e7eb";
+  const phone = order.customer_phone;
 
   return (
     <div style={{background:"white",borderRadius:12,padding:16,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",borderLeft:`4px solid ${borderColor}`}}>
@@ -1044,7 +1069,22 @@ function OrderCard({ order, onUpdate, readonly }) {
         <span style={{padding:"3px 10px",borderRadius:12,fontSize:12,fontWeight:700,color:st.color,background:st.bg}}>{st.label}</span>
       </div>
       {order.address && <p style={{margin:"4px 0",color:"#6b7280",fontSize:13}}>📍 {order.address}</p>}
-      {order.customer_phone && <p style={{margin:"4px 0",color:"#6b7280",fontSize:13}}>📞 {order.customer_phone}</p>}
+
+      {/* Teléfono + botón WA directo */}
+      {phone && (
+        <div style={{display:"flex",alignItems:"center",gap:8,margin:"4px 0"}}>
+          <p style={{margin:0,color:"#6b7280",fontSize:13}}>📞 {phone}</p>
+          <a
+            href={`https://wa.me/${phone.replace(/\D/g,"").replace(/^(?!56)/,"56")}`}
+            target="_blank" rel="noopener noreferrer"
+            style={{background:"#25D366",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:3}}
+          >
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.848L0 24l6.335-1.51A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-4.988-1.362l-.358-.213-3.76.897.933-3.659-.234-.374A9.797 9.797 0 0 1 2.182 12C2.182 6.584 6.584 2.182 12 2.182S21.818 6.584 21.818 12 17.416 21.818 12 21.818z"/></svg>
+            Chat
+          </a>
+        </div>
+      )}
+
       <div style={{background:"#f9fafb",borderRadius:8,padding:10,margin:"8px 0"}}>
         {(order.order_items||[]).map((it,i) => (
           <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"2px 0"}}>
@@ -1053,9 +1093,22 @@ function OrderCard({ order, onUpdate, readonly }) {
         ))}
       </div>
       {order.notes && <p style={{color:"#92400e",fontSize:13,background:"#fffbeb",borderRadius:6,padding:"6px 10px",margin:"6px 0"}}>📝 {order.notes}</p>}
+
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,gap:8,flexWrap:"wrap"}}>
         <span style={{fontWeight:800,fontSize:17}}>{fmt(order.total)}</span>
-        <div style={{display:"flex",gap:8}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+
+          {/* Botón WA con mensaje predefinido según estado */}
+          {phone && !readonly && !["cancelado","entregado"].includes(order.status) && (
+            <button
+              onClick={()=>openWA(waMsg(nextSt[order.status] || order.status))}
+              style={{background:"#25D366",color:"white",border:"none",borderRadius:8,padding:"10px 12px",cursor:"pointer",fontWeight:700,fontSize:13,display:"flex",alignItems:"center",gap:5}}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.848L0 24l6.335-1.51A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-4.988-1.362l-.358-.213-3.76.897.933-3.659-.234-.374A9.797 9.797 0 0 1 2.182 12C2.182 6.584 6.584 2.182 12 2.182S21.818 6.584 21.818 12 17.416 21.818 12 21.818z"/></svg>
+              WA
+            </button>
+          )}
+
           {!readonly && nextSt[order.status] && (
             <button
               onClick={()=>handleUpdate(order.id, nextSt[order.status])}
