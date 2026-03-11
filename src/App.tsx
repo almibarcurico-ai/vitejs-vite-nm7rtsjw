@@ -627,23 +627,52 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
       <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,margin:"4px 0 10px"}}>Método de pago *</p>
       <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
         {PAYMENT.map(p => (
-          <button key={p.id} onClick={()=>s("payment_method",p.id)} style={{
-            padding:"14px 16px",borderRadius:14,cursor:"pointer",
-            border:`2px solid ${form.payment_method===p.id ? C.rojo : C.grisLinea}`,
-            background: form.payment_method===p.id ? "rgba(232,25,44,0.12)" : C.negroCard,
-            display:"flex",alignItems:"center",gap:14,textAlign:"left",
-            boxShadow: form.payment_method===p.id ? `0 0 16px rgba(232,25,44,0.2)` : "none",
-            transition:"all 0.15s",
-          }}>
-            <span style={{fontSize:28,flexShrink:0}}>{p.icon}</span>
-            <div>
-              <p style={{margin:0,fontWeight:800,fontSize:15,color:form.payment_method===p.id?C.blanco:C.blancoSuave}}>{p.label}</p>
-              <p style={{margin:"2px 0 0",fontSize:12,color:C.grisTexto}}>{p.desc}</p>
-            </div>
-            {form.payment_method===p.id && (
-              <span style={{marginLeft:"auto",color:C.rojo,fontSize:20,fontWeight:900}}>✓</span>
+          <div key={p.id}>
+            <button onClick={()=>s("payment_method",p.id)} style={{
+              width:"100%",padding:"14px 16px",borderRadius:14,cursor:"pointer",
+              border:`2px solid ${form.payment_method===p.id ? C.rojo : C.grisLinea}`,
+              background: form.payment_method===p.id ? "#FFF5F5" : "#FFFFFF",
+              display:"flex",alignItems:"center",gap:14,textAlign:"left",
+              boxShadow: form.payment_method===p.id ? `0 0 16px rgba(232,25,44,0.1)` : "none",
+            }}>
+              <span style={{fontSize:28,flexShrink:0}}>{p.icon}</span>
+              <div>
+                <p style={{margin:0,fontWeight:800,fontSize:15,color:"#1A1A1A"}}>{p.label}</p>
+                <p style={{margin:"2px 0 0",fontSize:12,color:C.grisTexto}}>{p.desc}</p>
+              </div>
+              {form.payment_method===p.id && (
+                <span style={{marginLeft:"auto",color:C.rojo,fontSize:20,fontWeight:900}}>✓</span>
+              )}
+            </button>
+
+            {/* Datos de transferencia — solo cuando está seleccionado */}
+            {p.id === "transferencia" && form.payment_method === "transferencia" && (
+              <div style={{
+                background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:12,
+                padding:"14px 16px",marginTop:6,
+              }}>
+                <p style={{margin:"0 0 10px",fontWeight:800,fontSize:13,color:"#166534"}}>
+                  📲 Datos para transferir
+                </p>
+                {[
+                  ["Banco",    settings?.transfer_bank],
+                  ["Titular",  settings?.transfer_name],
+                  ["RUT",      settings?.transfer_rut],
+                  ["N° Cuenta",settings?.transfer_account],
+                ].map(([lbl,val]) => val ? (
+                  <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"3px 0",borderBottom:"1px solid #BBF7D0"}}>
+                    <span style={{color:"#166534",fontWeight:600}}>{lbl}</span>
+                    <span style={{color:"#14532D",fontWeight:800,letterSpacing:0.3}}>{val}</span>
+                  </div>
+                ) : null)}
+                {!settings?.transfer_bank && (
+                  <p style={{margin:0,color:"#6b7280",fontSize:12,fontStyle:"italic"}}>
+                    El administrador aún no ha configurado los datos de transferencia.
+                  </p>
+                )}
+              </div>
             )}
-          </button>
+          </div>
         ))}
       </div>
 
@@ -1155,28 +1184,66 @@ function AdminPedidos() {
 }
 
 function ConfigForm({ settings, onSave }) {
-  const [form, setForm] = useState({...settings});
+  const [form, setForm] = useState({
+    ...settings,
+    transfer_bank:    settings.transfer_bank    || "",
+    transfer_account: settings.transfer_account || "",
+    transfer_rut:     settings.transfer_rut     || "",
+    transfer_name:    settings.transfer_name    || "",
+  });
   const [saved, setSaved] = useState(false);
   const go = async () => {
-    await onSave({business_name:form.business_name,whatsapp:form.whatsapp,delivery_cost:parseInt(form.delivery_cost),min_order:parseInt(form.min_order),delivery_enabled:form.delivery_enabled,open:form.open,hours:form.hours});
+    await onSave({
+      business_name: form.business_name,
+      whatsapp: form.whatsapp,
+      delivery_cost: parseInt(form.delivery_cost),
+      min_order: parseInt(form.min_order),
+      delivery_enabled: form.delivery_enabled,
+      open: form.open,
+      hours: form.hours,
+      transfer_bank:    form.transfer_bank,
+      transfer_account: form.transfer_account,
+      transfer_rut:     form.transfer_rut,
+      transfer_name:    form.transfer_name,
+    });
     setSaved(true); setTimeout(()=>setSaved(false),2000);
   };
   return (
     <div style={{padding:16,maxWidth:480}}>
-      <h3 style={{marginBottom:16}}>Configuración</h3>
+      <h3 style={{marginBottom:16}}>Configuración general</h3>
       {[["Nombre del negocio","business_name","text"],["Horario","hours","text"],["Costo delivery (CLP)","delivery_cost","number"],["Pedido mínimo (CLP)","min_order","number"]].map(([lbl,k,t]) => (
         <div key={k}>
           <label style={{display:"block",fontWeight:600,fontSize:13,color:"#374151",marginBottom:4}}>{lbl}</label>
-          <input style={inpLight} type={t} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})}/>
+          <input style={inpLight} type={t} value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})}/>
         </div>
       ))}
       {[["Delivery activo","delivery_enabled"],["Local abierto","open"]].map(([lbl,k]) => (
         <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid #f3f4f6"}}>
           <span style={{fontWeight:600}}>{lbl}</span>
-          <input type="checkbox" checked={form[k]} onChange={e=>setForm({...form,[k]:e.target.checked})} style={{width:18,height:18,cursor:"pointer"}}/>
+          <input type="checkbox" checked={!!form[k]} onChange={e=>setForm({...form,[k]:e.target.checked})} style={{width:18,height:18,cursor:"pointer"}}/>
         </div>
       ))}
-      <button style={{...btnRed,marginTop:20,background:saved?"#10b981":C.rojo}} onClick={go}>{saved?"✓ Guardado":"Guardar cambios"}</button>
+
+      {/* Datos de transferencia */}
+      <h4 style={{margin:"24px 0 12px",color:"#374151",fontWeight:800,fontSize:14,textTransform:"uppercase",letterSpacing:1}}>
+        📲 Datos para transferencia
+      </h4>
+      <p style={{color:"#9ca3af",fontSize:12,marginBottom:14}}>Se mostrarán al cliente cuando seleccione pago por transferencia.</p>
+      {[
+        ["Banco","transfer_bank","Ej: Banco Estado"],
+        ["Nombre titular","transfer_name","Ej: Inversiones Alma SpA"],
+        ["RUT","transfer_rut","Ej: 77.123.456-7"],
+        ["N° cuenta","transfer_account","Ej: 12345678"],
+      ].map(([lbl,k,ph]) => (
+        <div key={k}>
+          <label style={{display:"block",fontWeight:600,fontSize:13,color:"#374151",marginBottom:4}}>{lbl}</label>
+          <input style={inpLight} placeholder={ph} value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})}/>
+        </div>
+      ))}
+
+      <button style={{...btnRed,marginTop:20,background:saved?"#10b981":C.rojo}} onClick={go}>
+        {saved ? "✓ Guardado" : "Guardar cambios"}
+      </button>
     </div>
   );
 }
