@@ -587,10 +587,8 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
   const s = (f,v) => setForm(prev=>({...prev,[f]:v}));
   const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
 
-  const PAYMENT = [
-    { id:"transferencia", icon:"📲", label:"Transferencia", desc:"Banco / Mercado Pago" },
-    { id:"efectivo",      icon:"💵", label:"Efectivo",      desc:"Al momento de la entrega" },
-  ];
+  const hasTransfer = !!(settings?.transfer_bank || settings?.transfer_name);
+  const hasPayLink  = !!(settings?.payment_method);
 
   const go = async () => {
     if (!form.name||!form.phone) return alert("Ingresa tu nombre y teléfono");
@@ -599,97 +597,135 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
     setLoading(true); await onSubmit(form); setLoading(false);
   };
 
+  const PayCard = ({id, icon, title, desc, children}) => (
+    <div style={{marginBottom:4}}>
+      <button onClick={()=>s("payment_method",id)} style={{
+        width:"100%",padding:"14px 16px",borderRadius:14,cursor:"pointer",
+        border:`2px solid ${form.payment_method===id ? C.rojo : C.grisLinea}`,
+        background: form.payment_method===id ? "#FFF5F5" : "#FFFFFF",
+        display:"flex",alignItems:"center",gap:14,textAlign:"left",
+        boxShadow: form.payment_method===id ? `0 2px 12px rgba(232,25,44,0.1)` : "none",
+      }}>
+        <span style={{fontSize:30,flexShrink:0}}>{icon}</span>
+        <div style={{flex:1}}>
+          <p style={{margin:0,fontWeight:800,fontSize:15,color:"#1A1A1A"}}>{title}</p>
+          <p style={{margin:"2px 0 0",fontSize:12,color:C.grisTexto}}>{desc}</p>
+        </div>
+        <div style={{
+          width:22,height:22,borderRadius:"50%",flexShrink:0,
+          border:`2px solid ${form.payment_method===id ? C.rojo : C.grisLinea}`,
+          background: form.payment_method===id ? C.rojo : "transparent",
+          display:"flex",alignItems:"center",justifyContent:"center",
+        }}>
+          {form.payment_method===id && <span style={{color:"white",fontSize:13,fontWeight:900}}>✓</span>}
+        </div>
+      </button>
+      {form.payment_method===id && children}
+    </div>
+  );
+
   return (
     <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:"#F7F6F3",padding:"16px 18px 40px"}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:C.grisTexto,cursor:"pointer",fontSize:15,marginBottom:16,padding:0}}>← Volver</button>
-      <h2 style={{color:C.blanco,marginBottom:20,fontWeight:900}}>Confirmar pedido</h2>
+      <h2 style={{color:"#1A1A1A",marginBottom:20,fontWeight:900}}>Confirmar pedido</h2>
 
       {/* Tipo de entrega */}
-      <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tipo de entrega</p>
+      <p style={{color:"#777",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tipo de entrega</p>
       <div style={{display:"flex",gap:8,marginBottom:20}}>
-        {["delivery","pickup"].map(t => (
-          <button key={t} onClick={()=>s("delivery_type",t)} style={{flex:1,padding:12,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,border:`2px solid ${form.delivery_type===t?C.rojo:C.grisLinea}`,background:form.delivery_type===t?"#2a0808":C.negroCard,color:form.delivery_type===t?C.blanco:C.grisTexto}}>
-            {t==="delivery"?"🚗 Delivery":"🏠 Retiro"}
+        {[["delivery","🚗 Delivery"],["pickup","🏠 Retiro en local"]].map(([t,lbl]) => (
+          <button key={t} onClick={()=>s("delivery_type",t)} style={{
+            flex:1,padding:12,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,
+            border:`2px solid ${form.delivery_type===t ? C.rojo : C.grisLinea}`,
+            background: form.delivery_type===t ? "#FFF5F5" : "#FFFFFF",
+            color: form.delivery_type===t ? C.rojo : "#555",
+          }}>
+            {lbl}
           </button>
         ))}
       </div>
 
-      {/* Datos personales — pre-rellenados */}
-      <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tus datos</p>
+      {/* Datos personales */}
+      <p style={{color:"#777",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tus datos</p>
       <input style={inp} placeholder="Nombre *" value={form.name} onChange={e=>s("name",e.target.value)}/>
       <input style={inp} placeholder="Teléfono *" type="tel" value={form.phone} onChange={e=>s("phone",e.target.value)}/>
       {form.delivery_type==="delivery" && (
-        <input style={{...inp,border:`2px solid ${C.rojo}`}} placeholder="Dirección de entrega *" value={form.address} onChange={e=>s("address",e.target.value)}/>
+        <input style={{...inp,borderColor:C.rojo}} placeholder="Dirección de entrega *" value={form.address} onChange={e=>s("address",e.target.value)}/>
       )}
       <textarea style={{...inp,height:72,resize:"vertical"}} placeholder="Notas (opcional)" value={form.notes} onChange={e=>s("notes",e.target.value)}/>
 
       {/* Método de pago */}
-      <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,margin:"4px 0 10px"}}>Método de pago *</p>
-      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-        {PAYMENT.map(p => (
-          <div key={p.id}>
-            <button onClick={()=>s("payment_method",p.id)} style={{
-              width:"100%",padding:"14px 16px",borderRadius:14,cursor:"pointer",
-              border:`2px solid ${form.payment_method===p.id ? C.rojo : C.grisLinea}`,
-              background: form.payment_method===p.id ? "#FFF5F5" : "#FFFFFF",
-              display:"flex",alignItems:"center",gap:14,textAlign:"left",
-              boxShadow: form.payment_method===p.id ? `0 0 16px rgba(232,25,44,0.1)` : "none",
-            }}>
-              <span style={{fontSize:28,flexShrink:0}}>{p.icon}</span>
-              <div>
-                <p style={{margin:0,fontWeight:800,fontSize:15,color:"#1A1A1A"}}>{p.label}</p>
-                <p style={{margin:"2px 0 0",fontSize:12,color:C.grisTexto}}>{p.desc}</p>
-              </div>
-              {form.payment_method===p.id && (
-                <span style={{marginLeft:"auto",color:C.rojo,fontSize:20,fontWeight:900}}>✓</span>
-              )}
-            </button>
+      <p style={{color:"#777",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,margin:"4px 0 12px"}}>Método de pago *</p>
 
-            {/* Datos de transferencia — solo cuando está seleccionado */}
-            {p.id === "transferencia" && form.payment_method === "transferencia" && (
-              <div style={{
-                background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:12,
-                padding:"14px 16px",marginTop:6,
-              }}>
-                <p style={{margin:"0 0 10px",fontWeight:800,fontSize:13,color:"#166534"}}>
-                  📲 Datos para transferir
-                </p>
-                {[
-                  ["Banco",    settings?.transfer_bank],
-                  ["Titular",  settings?.transfer_name],
-                  ["RUT",      settings?.transfer_rut],
-                  ["N° Cuenta",settings?.transfer_account],
-                ].map(([lbl,val]) => val ? (
-                  <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"3px 0",borderBottom:"1px solid #BBF7D0"}}>
+      {/* Transferencia */}
+      <PayCard id="transferencia" icon="📲" title="Transferencia bancaria" desc="Transfiere y envía el comprobante">
+        <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:12,padding:"14px 16px",marginTop:6}}>
+          {hasTransfer ? (
+            <>
+              <p style={{margin:"0 0 8px",fontWeight:800,fontSize:13,color:"#166534"}}>Datos para transferir</p>
+              {[["Banco",settings?.transfer_bank],["Titular",settings?.transfer_name],["RUT",settings?.transfer_rut],["N° Cuenta",settings?.transfer_account]]
+                .filter(([,v])=>v)
+                .map(([lbl,val])=>(
+                  <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #BBF7D0"}}>
                     <span style={{color:"#166534",fontWeight:600}}>{lbl}</span>
-                    <span style={{color:"#14532D",fontWeight:800,letterSpacing:0.3}}>{val}</span>
+                    <span style={{color:"#14532D",fontWeight:800}}>{val}</span>
                   </div>
-                ) : null)}
-                {!settings?.transfer_bank && (
-                  <p style={{margin:0,color:"#6b7280",fontSize:12,fontStyle:"italic"}}>
-                    El administrador aún no ha configurado los datos de transferencia.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+                ))}
+              <p style={{margin:"10px 0 0",fontSize:11,color:"#4ade80",fontStyle:"italic"}}>
+                📸 Envía el comprobante por WhatsApp al confirmar
+              </p>
+            </>
+          ) : (
+            <p style={{margin:0,color:"#6b7280",fontSize:12,fontStyle:"italic"}}>
+              Datos de transferencia no configurados aún.
+            </p>
+          )}
+        </div>
+      </PayCard>
+
+      {/* Pago online */}
+      <PayCard id="online" icon="💳" title="Pago online" desc="Paga de forma segura con tarjeta o débito">
+        <div style={{background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:12,padding:"14px 16px",marginTop:6}}>
+          {hasPayLink ? (
+            <>
+              <p style={{margin:"0 0 10px",fontWeight:800,fontSize:13,color:"#1e40af"}}>Ir a la plataforma de pago</p>
+              <a
+                href={settings.payment_method}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                  background:"#2563EB",color:"white",borderRadius:10,padding:"12px 16px",
+                  fontWeight:700,fontSize:14,textDecoration:"none",
+                }}
+              >
+                💳 Pagar ahora →
+              </a>
+              <p style={{margin:"8px 0 0",fontSize:11,color:"#3b82f6",textAlign:"center"}}>
+                Después de pagar, confirma el pedido aquí
+              </p>
+            </>
+          ) : (
+            <p style={{margin:0,color:"#6b7280",fontSize:12,fontStyle:"italic"}}>
+              Link de pago online no configurado aún.
+            </p>
+          )}
+        </div>
+      </PayCard>
 
       {/* Resumen */}
-      <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:12,padding:16,marginBottom:20}}>
-        <p style={{margin:"0 0 10px",color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Resumen</p>
+      <div style={{background:"#FFFFFF",border:"1px solid #ECECEC",borderRadius:12,padding:16,margin:"20px 0"}}>
+        <p style={{margin:"0 0 10px",color:"#777",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Resumen</p>
         {cart.map(item => (
-          <div key={item.id} style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.blancoSuave,padding:"3px 0"}}>
+          <div key={item.id} style={{display:"flex",justifyContent:"space-between",fontSize:14,color:"#333",padding:"3px 0"}}>
             <span>{item.name} × {item.qty}</span><span>{fmt(item.price*item.qty)}</span>
           </div>
         ))}
         {form.delivery_type==="delivery" && (
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.grisTexto,padding:"3px 0"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#777",padding:"3px 0"}}>
             <span>Despacho</span><span>{fmt(settings?.delivery_cost||0)}</span>
           </div>
         )}
-        <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.amarillo,fontSize:17,borderTop:`1px solid ${C.grisLinea}`,paddingTop:10,marginTop:6}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.rojo,fontSize:17,borderTop:"1px solid #ECECEC",paddingTop:10,marginTop:6}}>
           <span>Total</span><span>{fmt(total)}</span>
         </div>
       </div>
@@ -1185,64 +1221,122 @@ function AdminPedidos() {
 
 function ConfigForm({ settings, onSave }) {
   const [form, setForm] = useState({
-    ...settings,
+    business_name:    settings.business_name    || "",
+    whatsapp:         settings.whatsapp         || "",
+    hours:            settings.hours            || "",
+    delivery_cost:    settings.delivery_cost    || 0,
+    min_order:        settings.min_order        || 0,
+    delivery_enabled: settings.delivery_enabled ?? true,
+    open:             settings.open             ?? true,
     transfer_bank:    settings.transfer_bank    || "",
-    transfer_account: settings.transfer_account || "",
-    transfer_rut:     settings.transfer_rut     || "",
     transfer_name:    settings.transfer_name    || "",
+    transfer_rut:     settings.transfer_rut     || "",
+    transfer_account: settings.transfer_account || "",
+    payment_link:     settings.payment_method   || "",
   });
   const [saved, setSaved] = useState(false);
+  const s = (k,v) => setForm(prev=>({...prev,[k]:v}));
+
   const go = async () => {
     await onSave({
-      business_name: form.business_name,
-      whatsapp: form.whatsapp,
-      delivery_cost: parseInt(form.delivery_cost),
-      min_order: parseInt(form.min_order),
+      business_name:    form.business_name,
+      whatsapp:         form.whatsapp,
+      delivery_cost:    parseInt(form.delivery_cost)||0,
+      min_order:        parseInt(form.min_order)||0,
       delivery_enabled: form.delivery_enabled,
-      open: form.open,
-      hours: form.hours,
+      open:             form.open,
+      hours:            form.hours,
       transfer_bank:    form.transfer_bank,
-      transfer_account: form.transfer_account,
-      transfer_rut:     form.transfer_rut,
       transfer_name:    form.transfer_name,
+      transfer_rut:     form.transfer_rut,
+      transfer_account: form.transfer_account,
+      payment_method:   form.payment_link,
     });
-    setSaved(true); setTimeout(()=>setSaved(false),2000);
+    setSaved(true); setTimeout(()=>setSaved(false),2500);
   };
+
+  const Section = ({icon, title, children}) => (
+    <div style={{marginBottom:24}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 14px",paddingBottom:8,borderBottom:"2px solid #f3f4f6"}}>
+        <span style={{fontSize:18}}>{icon}</span>
+        <h4 style={{margin:0,color:"#111827",fontWeight:800,fontSize:14,textTransform:"uppercase",letterSpacing:0.8}}>{title}</h4>
+      </div>
+      {children}
+    </div>
+  );
+
+  const Field = ({label, k, type="text", placeholder=""}) => (
+    <div style={{marginBottom:12}}>
+      <label style={{display:"block",fontWeight:600,fontSize:13,color:"#374151",marginBottom:4}}>{label}</label>
+      <input style={inpLight} type={type} placeholder={placeholder} value={form[k]||""} onChange={e=>s(k,e.target.value)}/>
+    </div>
+  );
+
+  const Toggle = ({label, k}) => (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid #f9fafb"}}>
+      <span style={{fontWeight:600,color:"#374151"}}>{label}</span>
+      <div onClick={()=>s(k,!form[k])} style={{
+        width:48,height:26,borderRadius:13,cursor:"pointer",transition:"background 0.2s",
+        background:form[k]?"#10b981":"#d1d5db",position:"relative",
+      }}>
+        <div style={{
+          position:"absolute",top:3,left:form[k]?24:3,
+          width:20,height:20,borderRadius:"50%",background:"white",
+          boxShadow:"0 1px 4px rgba(0,0,0,0.2)",transition:"left 0.2s",
+        }}/>
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{padding:16,maxWidth:480}}>
-      <h3 style={{marginBottom:16}}>Configuración general</h3>
-      {[["Nombre del negocio","business_name","text"],["Horario","hours","text"],["Costo delivery (CLP)","delivery_cost","number"],["Pedido mínimo (CLP)","min_order","number"]].map(([lbl,k,t]) => (
-        <div key={k}>
-          <label style={{display:"block",fontWeight:600,fontSize:13,color:"#374151",marginBottom:4}}>{lbl}</label>
-          <input style={inpLight} type={t} value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})}/>
-        </div>
-      ))}
-      {[["Delivery activo","delivery_enabled"],["Local abierto","open"]].map(([lbl,k]) => (
-        <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid #f3f4f6"}}>
-          <span style={{fontWeight:600}}>{lbl}</span>
-          <input type="checkbox" checked={!!form[k]} onChange={e=>setForm({...form,[k]:e.target.checked})} style={{width:18,height:18,cursor:"pointer"}}/>
-        </div>
-      ))}
+    <div style={{padding:"16px 16px 40px",maxWidth:480}}>
 
-      {/* Datos de transferencia */}
-      <h4 style={{margin:"24px 0 12px",color:"#374151",fontWeight:800,fontSize:14,textTransform:"uppercase",letterSpacing:1}}>
-        📲 Datos para transferencia
-      </h4>
-      <p style={{color:"#9ca3af",fontSize:12,marginBottom:14}}>Se mostrarán al cliente cuando seleccione pago por transferencia.</p>
-      {[
-        ["Banco","transfer_bank","Ej: Banco Estado"],
-        ["Nombre titular","transfer_name","Ej: Inversiones Alma SpA"],
-        ["RUT","transfer_rut","Ej: 77.123.456-7"],
-        ["N° cuenta","transfer_account","Ej: 12345678"],
-      ].map(([lbl,k,ph]) => (
-        <div key={k}>
-          <label style={{display:"block",fontWeight:600,fontSize:13,color:"#374151",marginBottom:4}}>{lbl}</label>
-          <input style={inpLight} placeholder={ph} value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})}/>
-        </div>
-      ))}
+      <Section icon="⚙️" title="General">
+        <Field label="Nombre del negocio" k="business_name" placeholder="Almíbar"/>
+        <Field label="Horario de atención" k="hours" placeholder="Ej: 12:00 - 00:00"/>
+        <Field label="Costo delivery (CLP)" k="delivery_cost" type="number" placeholder="0"/>
+        <Field label="Pedido mínimo (CLP)" k="min_order" type="number" placeholder="0"/>
+        <Toggle label="Delivery activo" k="delivery_enabled"/>
+        <Toggle label="Local abierto" k="open"/>
+      </Section>
 
-      <button style={{...btnRed,marginTop:20,background:saved?"#10b981":C.rojo}} onClick={go}>
-        {saved ? "✓ Guardado" : "Guardar cambios"}
+      <Section icon="📲" title="Transferencia bancaria">
+        <p style={{color:"#6b7280",fontSize:12,marginBottom:14,lineHeight:1.5}}>
+          Estos datos aparecen al cliente cuando elige pagar por transferencia.
+        </p>
+        <Field label="Banco" k="transfer_bank" placeholder="Ej: Banco Estado"/>
+        <Field label="Nombre titular" k="transfer_name" placeholder="Ej: Inversiones Alma SpA"/>
+        <Field label="RUT" k="transfer_rut" placeholder="Ej: 77.123.456-7"/>
+        <Field label="N° de cuenta" k="transfer_account" placeholder="Ej: 000012345678"/>
+
+        {/* Vista previa */}
+        {(form.transfer_bank || form.transfer_name) && (
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:12,marginTop:4}}>
+            <p style={{margin:"0 0 6px",fontSize:11,fontWeight:800,color:"#166534",textTransform:"uppercase",letterSpacing:0.5}}>Vista previa del cliente</p>
+            {[["Banco",form.transfer_bank],["Titular",form.transfer_name],["RUT",form.transfer_rut],["N° Cuenta",form.transfer_account]].map(([l,v])=> v ? (
+              <div key={l} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0",color:"#166534"}}>
+                <span>{l}</span><span style={{fontWeight:700}}>{v}</span>
+              </div>
+            ):null)}
+          </div>
+        )}
+      </Section>
+
+      <Section icon="💳" title="Link de pago online">
+        <p style={{color:"#6b7280",fontSize:12,marginBottom:14,lineHeight:1.5}}>
+          Pega aquí tu link de Flow, Mercado Pago, Webpay u otro. El cliente podrá abrirlo directamente.
+        </p>
+        <Field label="URL de pago" k="payment_link" placeholder="https://www.flow.cl/app/web/pay.php?token=..."/>
+        {form.payment_link && (
+          <a href={form.payment_link} target="_blank" rel="noopener noreferrer"
+            style={{display:"inline-block",marginTop:4,fontSize:12,color:"#2563eb",wordBreak:"break-all"}}>
+            🔗 Verificar link →
+          </a>
+        )}
+      </Section>
+
+      <button style={{...btnRed, background: saved ? "#10b981" : C.rojo}} onClick={go}>
+        {saved ? "✓ Cambios guardados" : "Guardar configuración"}
       </button>
     </div>
   );
