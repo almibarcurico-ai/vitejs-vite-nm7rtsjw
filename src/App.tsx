@@ -182,8 +182,16 @@ function ClienteView() {
   const { settings } = useSettings();
   const [cart, setCart]       = useState([]);
   const [showCart, setShowCart] = useState(false);
-  const [step, setStep]       = useState("menu");
   const [activeCat, setActiveCat] = useState("all");
+
+  // Persiste el seguimiento en sessionStorage para sobrevivir recargas
+  const [step, setStep] = useState(() => {
+    try { return sessionStorage.getItem("almibar_step") || "menu"; } catch { return "menu"; }
+  });
+  const setStepPersisted = (s) => {
+    setStep(s);
+    try { sessionStorage.setItem("almibar_step", s); } catch {}
+  };
 
   const categories = ["all", ...new Set(products.map(p => p.category))];
   const filtered = activeCat === "all"
@@ -204,7 +212,9 @@ function ClienteView() {
     return prev.map(i => i.id === id ? {...i, qty: i.qty-1} : i);
   });
 
-  const [trackingId, setTrackingId] = useState(null);
+  const [trackingId, setTrackingId] = useState(() => {
+    try { return sessionStorage.getItem("almibar_tracking_id") || null; } catch { return null; }
+  });
 
   const placeOrder = async (form) => {
     const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
@@ -218,15 +228,22 @@ function ClienteView() {
     );
     setCart([]);
     setTrackingId(order.id);
-    setStep("tracking");
+    try { sessionStorage.setItem("almibar_tracking_id", order.id); } catch {}
+    setStepPersisted("tracking");
   };
 
-  if (step === "tracking") return (
-    <OrderTracker orderId={trackingId} onNewOrder={()=>{ setTrackingId(null); setStep("menu"); }}/>
+  const clearTracking = () => {
+    setTrackingId(null);
+    try { sessionStorage.removeItem("almibar_tracking_id"); } catch {}
+    setStepPersisted("menu");
+  };
+
+  if (step === "tracking" && trackingId) return (
+    <OrderTracker orderId={trackingId} onNewOrder={clearTracking}/>
   );
 
   if (step === "form") return (
-    <OrderForm cart={cart} cartTotal={cartTotal} settings={settings} onSubmit={placeOrder} onBack={()=>setStep("menu")}/>
+    <OrderForm cart={cart} cartTotal={cartTotal} settings={settings} onSubmit={placeOrder} onBack={()=>setStepPersisted("menu")}/>
   );
 
   return (
@@ -448,30 +465,47 @@ function OrderTracker({ orderId, onNewOrder }) {
     setTimeout(() => setToast(null), 5000);
   };
 
-  useEffect(() => {
-    supabase.from("orders").select("*, order_items(*)").eq("id", orderId).single()
-      .then(({ data }) => {
-        setOrder(data);
-        prevStatus.current = data?.status;
-        setLoading(false);
-      });
+  const loadOrder = useCallback(async () => {
+    const { data } = await supabase.from("orders").select("*, order_items(*)").eq("id", orderId).single();
+    if (!data) return;
+    // Detectar cambio de estado
+    if (prevStatus.current !== null && data.status !== prevStatus.current) {
+      showToast(data.status);
+    }
+    prevStatus.current = data.status;
+    setOrder(data);
+    setLoading(false);
+  }, [orderId]);
 
-    const sub = supabase.channel("track-" + orderId)
+  useEffect(() => {
+    loadOrder();
+
+    // Realtime sin filtro (más compatible con Supabase free tier)
+    const channelName = "order-track-" + Math.random().toString(36).slice(2);
+    const sub = supabase.channel(channelName)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "orders",
-        filter: `id=eq.${orderId}`
       }, (payload) => {
+        // Filtrar manualmente por orderId
+        if (payload.new.id !== orderId) return;
         const newStatus = payload.new.status;
         if (newStatus !== prevStatus.current) {
           prevStatus.current = newStatus;
           showToast(newStatus);
+          // Recargar para obtener order_items también
+          loadOrder();
         }
-        setOrder(prev => ({ ...prev, ...payload.new }));
       })
       .subscribe();
 
-    return () => supabase.removeChannel(sub);
-  }, [orderId]);
+    // Polling cada 8s como respaldo garantizado
+    const poll = setInterval(loadOrder, 8000);
+
+    return () => {
+      supabase.removeChannel(sub);
+      clearInterval(poll);
+    };
+  }, [orderId, loadOrder]);
 
   const STEPS = [
     { key: "pendiente",  icon: "🕐", label: "Pedido recibido",  desc: "Esperando confirmación del local" },
