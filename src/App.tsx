@@ -67,7 +67,8 @@ function useSettings() {
     return () => supabase.removeChannel(sub);
   },[]);
   const update = async (u) => {
-    const {data} = await supabase.from("settings").update({...u, updated_at: new Date().toISOString()}).eq("id",1).select().single();
+    const {data, error} = await supabase.from("settings").update(u).eq("id",1).select().single();
+    if (error) { console.error("Settings update error:", error); alert("Error al guardar: " + error.message); return; }
     if (data) setS(data);
   };
   return { settings: s, updateSettings: update };
@@ -417,7 +418,20 @@ function ClienteView() {
                 {settings?.delivery_cost > 0 && (
                   <p style={{color:C.grisTexto,fontSize:13,margin:"0 0 8px",textAlign:"right"}}>+ Despacho desde {fmt(settings.delivery_cost)}</p>
                 )}
-                <button style={{...btnRed,marginTop:8}} onClick={()=>{setShowCart(false);setStepPersisted("form");}}>
+                {settings?.min_order > 0 && cartTotal < settings.min_order && (
+                  <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 14px",marginBottom:10}}>
+                    <p style={{margin:0,color:"#c2410c",fontSize:13,fontWeight:700}}>
+                      ⚠️ Mínimo {fmt(settings.min_order)} · Faltan {fmt(settings.min_order - cartTotal)}
+                    </p>
+                  </div>
+                )}
+                <button
+                  style={{...btnRed,marginTop:8,opacity:(settings?.min_order>0&&cartTotal<settings.min_order)?0.45:1}}
+                  onClick={()=>{
+                    if(settings?.min_order>0&&cartTotal<settings.min_order) return;
+                    setShowCart(false); setStepPersisted("form");
+                  }}
+                >
                   Ir al pedido →
                 </button>
               </>
@@ -594,6 +608,8 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
     if (!form.name||!form.phone) return alert("Ingresa tu nombre y teléfono");
     if (form.delivery_type==="delivery"&&!form.address) return alert("Ingresa tu dirección de entrega");
     if (!form.payment_method) return alert("Selecciona un método de pago");
+    const minOrder = settings?.min_order || 0;
+    if (minOrder > 0 && cartTotal < minOrder) return alert(`El pedido mínimo es ${fmt(minOrder)}. Tu pedido actual es ${fmt(cartTotal)}.`);
     setLoading(true); await onSubmit(form); setLoading(false);
   };
 
