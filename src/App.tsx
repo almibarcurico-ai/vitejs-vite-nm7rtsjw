@@ -11,16 +11,17 @@ const CREDENTIALS = {
 };
 
 const C = {
-  negro:      "#0d0d0d",
-  negroCard:  "#181818",
-  negroSuave: "#242424",
-  rojo:       "#C41E1E",
-  rojoGlow:   "rgba(196,30,30,0.35)",
+  negro:      "#0a0a0f",
+  negroCard:  "#13131a",
+  negroSuave: "#1c1c26",
+  rojo:       "#E8192C",
+  rojoGlow:   "rgba(232,25,44,0.35)",
   blanco:     "#FFFFFF",
-  blancoSuave:"#F0EDE8",
-  grisTexto:  "#9A9080",
-  grisLinea:  "#2a2a2a",
-  amarillo:   "#F5C518",
+  blancoSuave:"#F2EEE9",
+  grisTexto:  "#8A8499",
+  grisLinea:  "#232330",
+  amarillo:   "#FFD700",
+  acento:     "#FF6B35",
 };
 
 const DEFAULT_IMAGES = {
@@ -233,10 +234,11 @@ function ClienteView() {
 
   const placeOrder = async (form) => {
     const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
+    const notesWithPayment = [form.notes, `Pago: ${form.payment_method}`].filter(Boolean).join(" | ");
     const {data:order, error} = await supabase.from("orders").insert({
       customer_name: form.name, customer_phone: form.phone, address: form.address,
-      delivery_type: form.delivery_type, notes: form.notes, total,
-      status: "pendiente", payment_method: form.payment_method,
+      delivery_type: form.delivery_type, notes: notesWithPayment, total,
+      status: "pendiente",
     }).select().single();
     if (error) return alert("Error al enviar pedido");
     await supabase.from("order_items").insert(
@@ -439,7 +441,7 @@ function WelcomeScreen({ onDone }) {
   return (
     <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px"}}>
       {/* Logo / splash */}
-      <div style={{width:"100%",background:`linear-gradient(160deg,#1a0000 0%,#2a0808 60%,#0d0d0d 100%)`,borderRadius:"0 0 40px 40px",padding:"48px 24px 40px",textAlign:"center",marginBottom:28}}>
+      <div style={{width:"100%",background:`linear-gradient(160deg,#12001a 0%,#1e0a2e 40%,#1a0010 80%,#0a0a0f 100%)`,borderRadius:"0 0 40px 40px",padding:"48px 24px 40px",textAlign:"center",marginBottom:28}}>
         <div style={{fontSize:64,marginBottom:12}}>🍹</div>
         <h1 style={{margin:0,color:C.blanco,fontWeight:900,fontSize:28,letterSpacing:4,textTransform:"uppercase"}}>Almíbar</h1>
         <p style={{margin:"8px 0 0",color:C.grisTexto,fontSize:14}}>Bar & Restaurante · Curicó</p>
@@ -520,7 +522,7 @@ function OrderHistory({ phone }) {
                 <p style={{margin:0,color:C.blanco,fontWeight:700,fontSize:14}}>{date} · {time}</p>
                 <p style={{margin:"2px 0 0",color:C.grisTexto,fontSize:12}}>
                   {o.delivery_type==="delivery"?"🚗 Delivery":"🏠 Retiro"}
-                  {o.payment_method && ` · ${PAYMENT_ICONS[o.payment_method]||""} ${o.payment_method}`}
+                  {o.notes && o.notes.includes("Pago:") ? ` · 💳 ${o.notes.split("Pago:")[1].split("|")[0].trim()}` : ""}
                 </p>
               </div>
               <span style={{padding:"3px 10px",borderRadius:12,fontSize:12,fontWeight:700,color:stColor[o.status]||"#fff",background:"rgba(255,255,255,0.05)",border:`1px solid ${stColor[o.status]||C.grisLinea}`}}>
@@ -558,10 +560,8 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
   const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
 
   const PAYMENT = [
-    { id:"efectivo",       icon:"💵", label:"Efectivo" },
-    { id:"debito",         icon:"💳", label:"Débito" },
-    { id:"credito",        icon:"💳", label:"Crédito" },
-    { id:"transferencia",  icon:"📲", label:"Transferencia" },
+    { id:"transferencia", icon:"📲", label:"Transferencia", desc:"Banco / Mercado Pago" },
+    { id:"efectivo",      icon:"💵", label:"Efectivo",      desc:"Al momento de la entrega" },
   ];
 
   const go = async () => {
@@ -597,16 +597,24 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
 
       {/* Método de pago */}
       <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,margin:"4px 0 10px"}}>Método de pago *</p>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
         {PAYMENT.map(p => (
           <button key={p.id} onClick={()=>s("payment_method",p.id)} style={{
-            padding:"12px 8px",borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,
-            border:`2px solid ${form.payment_method===p.id?C.rojo:C.grisLinea}`,
-            background: form.payment_method===p.id?"#2a0808":C.negroCard,
-            color: form.payment_method===p.id?C.blanco:C.grisTexto,
-            display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+            padding:"14px 16px",borderRadius:14,cursor:"pointer",
+            border:`2px solid ${form.payment_method===p.id ? C.rojo : C.grisLinea}`,
+            background: form.payment_method===p.id ? "rgba(232,25,44,0.12)" : C.negroCard,
+            display:"flex",alignItems:"center",gap:14,textAlign:"left",
+            boxShadow: form.payment_method===p.id ? `0 0 16px rgba(232,25,44,0.2)` : "none",
+            transition:"all 0.15s",
           }}>
-            <span>{p.icon}</span>{p.label}
+            <span style={{fontSize:28,flexShrink:0}}>{p.icon}</span>
+            <div>
+              <p style={{margin:0,fontWeight:800,fontSize:15,color:form.payment_method===p.id?C.blanco:C.blancoSuave}}>{p.label}</p>
+              <p style={{margin:"2px 0 0",fontSize:12,color:C.grisTexto}}>{p.desc}</p>
+            </div>
+            {form.payment_method===p.id && (
+              <span style={{marginLeft:"auto",color:C.rojo,fontSize:20,fontWeight:900}}>✓</span>
+            )}
           </button>
         ))}
       </div>
