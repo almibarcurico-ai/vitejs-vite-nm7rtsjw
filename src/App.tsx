@@ -1236,7 +1236,10 @@ function AdminPedidos() {
 }
 
 function ConfigForm({ settings, onSave }) {
-  const [form, setForm] = useState({
+  // Inicializar UNA SOLA VEZ con los settings iniciales
+  // No depende de settings como prop dinámico para evitar reset al escribir
+  const initialized = useRef(false);
+  const [form, setForm] = useState(() => ({
     business_name:    settings.business_name    || "",
     whatsapp:         settings.whatsapp         || "",
     hours:            settings.hours            || "",
@@ -1249,7 +1252,28 @@ function ConfigForm({ settings, onSave }) {
     transfer_rut:     settings.transfer_rut     || "",
     transfer_account: settings.transfer_account || "",
     payment_link:     settings.payment_method   || "",
-  });
+  }));
+
+  // Solo actualiza el form si aún no ha sido modificado por el usuario
+  useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      setForm({
+        business_name:    settings.business_name    || "",
+        whatsapp:         settings.whatsapp         || "",
+        hours:            settings.hours            || "",
+        delivery_cost:    settings.delivery_cost    || 0,
+        min_order:        settings.min_order        || 0,
+        delivery_enabled: settings.delivery_enabled ?? true,
+        open:             settings.open             ?? true,
+        transfer_bank:    settings.transfer_bank    || "",
+        transfer_name:    settings.transfer_name    || "",
+        transfer_rut:     settings.transfer_rut     || "",
+        transfer_account: settings.transfer_account || "",
+        payment_link:     settings.payment_method   || "",
+      });
+    }
+  }, [settings.id]);
   const [saved, setSaved] = useState(false);
   const s = (k,v) => setForm(prev=>({...prev,[k]:v}));
 
