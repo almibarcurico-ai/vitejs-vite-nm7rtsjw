@@ -1177,7 +1177,7 @@ function AdminView({ onLogout }) {
         </div>
       )}
       {tab==="pedidos" && <AdminPedidos/>}
-      {tab==="config" && settings && <ConfigForm settings={settings} onSave={updateSettings}/>}
+      {tab==="config" && <ConfigForm />}
     </div>
   );
 }
@@ -1235,50 +1235,36 @@ function AdminPedidos() {
   );
 }
 
-function ConfigForm({ settings, onSave }) {
-  // Inicializar UNA SOLA VEZ con los settings iniciales
-  // No depende de settings como prop dinámico para evitar reset al escribir
-  const initialized = useRef(false);
-  const [form, setForm] = useState(() => ({
-    business_name:    settings.business_name    || "",
-    whatsapp:         settings.whatsapp         || "",
-    hours:            settings.hours            || "",
-    delivery_cost:    settings.delivery_cost    || 0,
-    min_order:        settings.min_order        || 0,
-    delivery_enabled: settings.delivery_enabled ?? true,
-    open:             settings.open             ?? true,
-    transfer_bank:    settings.transfer_bank    || "",
-    transfer_name:    settings.transfer_name    || "",
-    transfer_rut:     settings.transfer_rut     || "",
-    transfer_account: settings.transfer_account || "",
-    payment_link:     settings.payment_method   || "",
-  }));
-
-  // Solo actualiza el form si aún no ha sido modificado por el usuario
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      setForm({
-        business_name:    settings.business_name    || "",
-        whatsapp:         settings.whatsapp         || "",
-        hours:            settings.hours            || "",
-        delivery_cost:    settings.delivery_cost    || 0,
-        min_order:        settings.min_order        || 0,
-        delivery_enabled: settings.delivery_enabled ?? true,
-        open:             settings.open             ?? true,
-        transfer_bank:    settings.transfer_bank    || "",
-        transfer_name:    settings.transfer_name    || "",
-        transfer_rut:     settings.transfer_rut     || "",
-        transfer_account: settings.transfer_account || "",
-        payment_link:     settings.payment_method   || "",
-      });
-    }
-  }, [settings.id]);
+function ConfigForm() {
+  const [form, setForm] = useState(null); // null = cargando
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const s = (k,v) => setForm(prev=>({...prev,[k]:v}));
 
+  // Carga PROPIA desde Supabase, sin depender del padre
+  useEffect(() => {
+    supabase.from("settings").select("*").eq("id",1).single()
+      .then(({data}) => {
+        if (data) setForm({
+          business_name:    data.business_name    || "",
+          whatsapp:         data.whatsapp         || "",
+          hours:            data.hours            || "",
+          delivery_cost:    data.delivery_cost    || 0,
+          min_order:        data.min_order        || 0,
+          delivery_enabled: data.delivery_enabled ?? true,
+          open:             data.open             ?? true,
+          transfer_bank:    data.transfer_bank    || "",
+          transfer_name:    data.transfer_name    || "",
+          transfer_rut:     data.transfer_rut     || "",
+          transfer_account: data.transfer_account || "",
+          payment_link:     data.payment_method   || "",
+        });
+      });
+  }, []); // Solo al montar — nunca se resetea
+
   const go = async () => {
-    await onSave({
+    setSaving(true);
+    const payload = {
       business_name:    form.business_name,
       whatsapp:         form.whatsapp,
       delivery_cost:    parseInt(form.delivery_cost)||0,
@@ -1291,9 +1277,14 @@ function ConfigForm({ settings, onSave }) {
       transfer_rut:     form.transfer_rut,
       transfer_account: form.transfer_account,
       payment_method:   form.payment_link,
-    });
+    };
+    const {error} = await supabase.from("settings").update(payload).eq("id",1);
+    setSaving(false);
+    if (error) { alert("Error al guardar: " + error.message); return; }
     setSaved(true); setTimeout(()=>setSaved(false),2500);
   };
+
+  if (!form) return <div style={{padding:32,textAlign:"center",color:"#6b7280"}}>Cargando configuración...</div>;
 
   const Section = ({icon, title, children}) => (
     <div style={{marginBottom:24}}>
@@ -1375,8 +1366,8 @@ function ConfigForm({ settings, onSave }) {
         )}
       </Section>
 
-      <button style={{...btnRed, background: saved ? "#10b981" : C.rojo}} onClick={go}>
-        {saved ? "✓ Cambios guardados" : "Guardar configuración"}
+      <button style={{...btnRed, background: saved ? "#10b981" : C.rojo}} onClick={go} disabled={saving}>
+        {saving ? "Guardando..." : saved ? "✓ Cambios guardados" : "Guardar configuración"}
       </button>
     </div>
   );
