@@ -90,28 +90,65 @@ function useOrders(filters = {}) {
     const {data} = await q;
     setOrders(data||[]);
   },[filters.date, filters.status]);
+
   useEffect(() => {
     fetchOrders();
-    const sub = supabase.channel("o-ch")
+
+    // Canal realtime con nombre único para evitar conflictos
+    const channelName = "orders-live-" + Math.random().toString(36).slice(2);
+    const sub = supabase.channel(channelName)
       .on("postgres_changes",{event:"*",schema:"public",table:"orders"}, fetchOrders)
       .on("postgres_changes",{event:"*",schema:"public",table:"order_items"}, fetchOrders)
-      .subscribe();
-    return () => supabase.removeChannel(sub);
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          // Si falla el realtime, reintenta en 3s
+          setTimeout(fetchOrders, 3000);
+        }
+      });
+
+    // Polling de respaldo cada 15s por si el websocket se cae
+    const poll = setInterval(fetchOrders, 15000);
+
+    return () => {
+      supabase.removeChannel(sub);
+      clearInterval(poll);
+    };
   },[fetchOrders]);
+
   return { orders, refetch: fetchOrders };
 }
 
 export default function App() {
   const [route, setRoute] = useState(getRoute());
-  const [auth, setAuth]   = useState(null);
+
+  // Persiste auth en sessionStorage para sobrevivir recargas
+  const [auth, setAuth] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("almibar_auth");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  const login = (role) => {
+    const a = { role };
+    setAuth(a);
+    try { sessionStorage.setItem("almibar_auth", JSON.stringify(a)); } catch {}
+  };
+
+  const logout = () => {
+    setAuth(null);
+    try { sessionStorage.removeItem("almibar_auth"); } catch {}
+    window.location.hash = "";
+  };
+
   useEffect(() => {
     const h = () => setRoute(getRoute());
     window.addEventListener("hashchange", h);
     return () => window.removeEventListener("hashchange", h);
   },[]);
-  const logout = () => { setAuth(null); window.location.hash = ""; };
-  if (route === "caja")  { if (!auth||auth.role!=="caja")  return <Login role="caja"  onLogin={r=>setAuth({role:r})}/>; return <CajaView  onLogout={logout}/>; }
-  if (route === "admin") { if (!auth||auth.role!=="admin") return <Login role="admin" onLogin={r=>setAuth({role:r})}/>; return <AdminView onLogout={logout}/>; }
+
+  if (route === "caja")  { if (!auth||auth.role!=="caja")  return <Login role="caja"  onLogin={login}/>; return <CajaView  onLogout={logout}/>; }
+  if (route === "admin") { if (!auth||auth.role!=="admin") return <Login role="admin" onLogin={login}/>; return <AdminView onLogout={logout}/>; }
   return <ClienteView />;
 }
 
