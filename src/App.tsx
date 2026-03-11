@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo as React_memo } from "react";
+const React = { memo: React_memo };
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://nnswoxfkdutivhgeiiev.supabase.co";
@@ -1127,57 +1128,65 @@ function Cuadre({ orders }) {
 }
 
 /* ── ADMIN ── */
-function AdminView({ onLogout }) {
-  const [tab, setTab] = useState("productos");
+// ConfigForm memoizado — NUNCA se re-renderiza por cambios del padre
+const MemoConfigForm = React.memo(function MemoConfigForm() {
+  return <ConfigForm />;
+});
+
+function AdminProductos() {
   const products = useProducts();
-  const { settings, updateSettings } = useSettings();
   const [edit, setEdit] = useState(null);
   const [newProd, setNewProd] = useState(false);
   const toggleAvail = async (p) => supabase.from("products").update({available:!p.available}).eq("id",p.id);
   const delProd = async (id) => { if(!confirm("¿Eliminar?")) return; supabase.from("products").delete().eq("id",id); };
   const cats = [...new Set(products.map(p=>p.category))];
   return (
+    <div style={{padding:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+        <h3 style={{margin:0}}>Productos ({products.length})</h3>
+        <button style={{background:C.rojo,color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontWeight:700}} onClick={()=>setNewProd(true)}>+ Nuevo</button>
+      </div>
+      {newProd && <ProdForm onSave={async d=>{await supabase.from("products").insert(d);setNewProd(false);}} onCancel={()=>setNewProd(false)}/>}
+      {edit && <ProdForm product={edit} onSave={async d=>{await supabase.from("products").update(d).eq("id",edit.id);setEdit(null);}} onCancel={()=>setEdit(null)}/>}
+      {cats.map(cat => (
+        <div key={cat} style={{marginBottom:24}}>
+          <h4 style={{color:"#6b7280",marginBottom:8}}>{cat}</h4>
+          {products.filter(p=>p.category===cat).map(p => (
+            <div key={p.id} style={{background:"white",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12,marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+              <img src={getImg(p)} alt={p.name} style={{width:52,height:52,objectFit:"cover",borderRadius:8,flexShrink:0}} onError={e=>{e.target.src=DEFAULT_IMAGES.default;}}/>
+              <div style={{flex:1}}>
+                <p style={{margin:0,fontWeight:600}}>{p.name}</p>
+                <p style={{margin:0,color:"#6b7280",fontSize:13}}>{fmt(p.price)}{p.description&&` · ${p.description}`}</p>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <button onClick={()=>toggleAvail(p)} style={{border:"none",borderRadius:20,padding:"4px 12px",cursor:"pointer",fontWeight:600,fontSize:12,background:p.available?"#d1fae5":"#fee2e2",color:p.available?"#10b981":"#ef4444"}}>{p.available?"Activo":"Inactivo"}</button>
+                <button onClick={()=>setEdit(p)} style={{background:"#f3f4f6",border:"none",borderRadius:8,padding:"6px 8px",cursor:"pointer"}}>✏️</button>
+                <button onClick={()=>delProd(p.id)} style={{background:"#fee2e2",border:"none",borderRadius:8,padding:"6px 8px",cursor:"pointer"}}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdminView({ onLogout }) {
+  const [tab, setTab] = useState("productos");
+  return (
     <div style={{minHeight:"100vh",background:"#f0ede8"}}>
-      <header style={{background:C.negro,borderBottom:`2px solid ${C.rojo}`,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <h2 style={{margin:0,color:C.blanco,fontWeight:800}}>⚙️ Administración</h2>
-        <button onClick={onLogout} style={{background:"rgba(255,255,255,0.1)",color:C.blanco,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer"}}>Salir</button>
+      <header style={{background:"#1A1A1A",borderBottom:`2px solid ${C.rojo}`,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <h2 style={{margin:0,color:"#FFFFFF",fontWeight:800}}>⚙️ Administración</h2>
+        <button onClick={onLogout} style={{background:"rgba(255,255,255,0.1)",color:"#FFFFFF",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer"}}>Salir</button>
       </header>
       <div style={{display:"flex",background:"white",borderBottom:"1px solid #e5e7eb",overflowX:"auto"}}>
         {[["productos","Productos"],["pedidos","Pedidos"],["config","Configuración"]].map(([k,l]) => (
           <button key={k} onClick={()=>setTab(k)} style={{padding:"12px 20px",background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap",fontWeight:tab===k?700:500,fontSize:14,color:tab===k?C.rojo:"#6b7280",borderBottom:tab===k?`2px solid ${C.rojo}`:"2px solid transparent"}}>{l}</button>
         ))}
       </div>
-      {tab==="productos" && (
-        <div style={{padding:16}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
-            <h3 style={{margin:0}}>Productos ({products.length})</h3>
-            <button style={{background:C.rojo,color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontWeight:700}} onClick={()=>setNewProd(true)}>+ Nuevo</button>
-          </div>
-          {newProd && <ProdForm onSave={async d=>{await supabase.from("products").insert(d);setNewProd(false);}} onCancel={()=>setNewProd(false)}/>}
-          {edit && <ProdForm product={edit} onSave={async d=>{await supabase.from("products").update(d).eq("id",edit.id);setEdit(null);}} onCancel={()=>setEdit(null)}/>}
-          {cats.map(cat => (
-            <div key={cat} style={{marginBottom:24}}>
-              <h4 style={{color:"#6b7280",marginBottom:8}}>{cat}</h4>
-              {products.filter(p=>p.category===cat).map(p => (
-                <div key={p.id} style={{background:"white",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12,marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
-                  <img src={getImg(p)} alt={p.name} style={{width:52,height:52,objectFit:"cover",borderRadius:8,flexShrink:0}} onError={e=>{e.target.src=DEFAULT_IMAGES.default;}}/>
-                  <div style={{flex:1}}>
-                    <p style={{margin:0,fontWeight:600}}>{p.name}</p>
-                    <p style={{margin:0,color:"#6b7280",fontSize:13}}>{fmt(p.price)}{p.description&&` · ${p.description}`}</p>
-                  </div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <button onClick={()=>toggleAvail(p)} style={{border:"none",borderRadius:20,padding:"4px 12px",cursor:"pointer",fontWeight:600,fontSize:12,background:p.available?"#d1fae5":"#fee2e2",color:p.available?"#10b981":"#ef4444"}}>{p.available?"Activo":"Inactivo"}</button>
-                    <button onClick={()=>setEdit(p)} style={{background:"#f3f4f6",border:"none",borderRadius:8,padding:"6px 8px",cursor:"pointer"}}>✏️</button>
-                    <button onClick={()=>delProd(p.id)} style={{background:"#fee2e2",border:"none",borderRadius:8,padding:"6px 8px",cursor:"pointer"}}>🗑️</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+      {tab==="productos" && <AdminProductos/>}
       {tab==="pedidos" && <AdminPedidos/>}
-      {tab==="config" && <ConfigForm />}
+      {tab==="config" && <MemoConfigForm/>}
     </div>
   );
 }
