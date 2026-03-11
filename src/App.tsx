@@ -11,17 +11,21 @@ const CREDENTIALS = {
 };
 
 const C = {
-  negro:      "#0a0a0f",
-  negroCard:  "#13131a",
-  negroSuave: "#1c1c26",
+  negro:      "#FFFFFF",
+  negroCard:  "#FFFFFF",
+  negroSuave: "#F5F4F2",
   rojo:       "#E8192C",
-  rojoGlow:   "rgba(232,25,44,0.35)",
-  blanco:     "#FFFFFF",
-  blancoSuave:"#F2EEE9",
-  grisTexto:  "#8A8499",
-  grisLinea:  "#232330",
-  amarillo:   "#FFD700",
+  rojoGlow:   "rgba(232,25,44,0.2)",
+  blanco:     "#1A1A1A",
+  blancoSuave:"#2D2D2D",
+  grisTexto:  "#777777",
+  grisLinea:  "#E8E8E8",
+  amarillo:   "#D4A017",
   acento:     "#FF6B35",
+  // fondos
+  fondo:      "#F7F6F3",
+  card:       "#FFFFFF",
+  cardBorder: "#ECECEC",
 };
 
 const DEFAULT_IMAGES = {
@@ -276,12 +280,12 @@ function ClienteView() {
   );
 
   return (
-    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,paddingBottom:90}}>
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:"#F7F6F3",paddingBottom:90}}>
 
       {/* Header */}
-      <header style={{background:C.negro,borderBottom:`2px solid ${C.rojo}`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:`0 2px 24px ${C.rojoGlow}`}}>
+      <header style={{background:"#FFFFFF",borderBottom:`2px solid ${C.rojo}`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
         <div>
-          <h1 style={{margin:0,fontSize:20,color:C.blanco,fontWeight:900,letterSpacing:3,textTransform:"uppercase"}}>🍹 Almíbar</h1>
+          <h1 style={{margin:0,fontSize:20,color:"#1A1A1A",fontWeight:900,letterSpacing:3,textTransform:"uppercase"}}>🍹 Almíbar</h1>
           {settings && (
             <span style={{fontSize:11,color:settings.open?"#10b981":"#ef4444",fontWeight:600}}>
               {settings.open ? "● Abierto" : "● Cerrado"} · {settings.hours}
@@ -302,7 +306,7 @@ function ClienteView() {
       </header>
 
       {/* Tabs */}
-      <div style={{display:"flex",background:C.negroSuave,borderBottom:`1px solid ${C.grisLinea}`}}>
+      <div style={{display:"flex",background:"#FFFFFF",borderBottom:`1px solid ${C.grisLinea}`}}>
         {[{id:"menu",label:"🍽️ Menú"},{id:"historial",label:"📋 Mis pedidos"}].map(t => (
           <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
             flex:1,padding:"12px 0",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,
@@ -318,8 +322,8 @@ function ClienteView() {
       ) : (
         <>
           {/* Info banner */}
-          <div style={{background:`linear-gradient(135deg,#1a0505 0%,#2a0808 100%)`,padding:"12px 18px",borderBottom:`1px solid ${C.grisLinea}`}}>
-            <p style={{margin:0,color:C.blancoSuave,fontSize:13,fontWeight:600}}>🚗 Delivery · 🏠 Retiro en local</p>
+          <div style={{background:"#FFF5F5",padding:"10px 18px",borderBottom:`1px solid #FFD0D3`}}>
+            <p style={{margin:0,color:"#C41E1E",fontSize:13,fontWeight:700}}>🚗 Delivery · 🏠 Retiro en local</p>
             {settings?.min_order > 0 && (
               <p style={{margin:"2px 0 0",color:C.grisTexto,fontSize:12}}>
                 Mínimo {fmt(settings.min_order)} · Despacho {fmt(settings.delivery_cost)}
@@ -328,14 +332,14 @@ function ClienteView() {
           </div>
 
           {/* Categorías */}
-          <div style={{display:"flex",gap:8,padding:"12px 14px",overflowX:"auto",background:C.negroSuave,borderBottom:`1px solid ${C.grisLinea}`,scrollbarWidth:"none"}}>
+          <div style={{display:"flex",gap:8,padding:"12px 14px",overflowX:"auto",background:"#FFFFFF",borderBottom:`1px solid ${C.grisLinea}`,scrollbarWidth:"none"}}>
             {categories.map(c => (
               <button key={c} onClick={()=>setActiveCat(c)} style={{
                 whiteSpace:"nowrap",padding:"7px 16px",borderRadius:20,cursor:"pointer",
-                fontSize:13,fontWeight:700,border:"none",
-                background: activeCat===c ? C.rojo : C.negro,
-                color: activeCat===c ? C.blanco : C.grisTexto,
-                boxShadow: activeCat===c ? `0 2px 12px ${C.rojoGlow}` : "none",
+                fontSize:13,fontWeight:700,border:`1px solid ${activeCat===c ? C.rojo : C.grisLinea}`,
+                background: activeCat===c ? C.rojo : "#FFFFFF",
+                color: activeCat===c ? "#FFFFFF" : C.grisTexto,
+                boxShadow: activeCat===c ? `0 2px 8px ${C.rojoGlow}` : "none",
               }}>
                 {c === "all" ? "Todo" : c}
               </button>
@@ -347,7 +351,7 @@ function ClienteView() {
             {filtered.map(product => {
               const inCart = cart.find(i => i.id === product.id);
               return (
-                <div key={product.id} style={{background:C.negroCard,borderRadius:14,overflow:"hidden",border:`1px solid ${C.grisLinea}`,display:"flex",flexDirection:"column"}}>
+                <div key={product.id} style={{background:"#FFFFFF",borderRadius:14,overflow:"hidden",border:`1px solid #ECECEC`,boxShadow:"0 1px 6px rgba(0,0,0,0.06)",display:"flex",flexDirection:"column"}}>
                   <div style={{position:"relative",height:120,overflow:"hidden",flexShrink:0}}>
                     <img src={getImg(product)} alt={product.name}
                       style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
@@ -355,11 +359,11 @@ function ClienteView() {
                     <div style={{position:"absolute",bottom:0,left:0,right:0,height:40,background:"linear-gradient(transparent,rgba(0,0,0,0.65))"}}/>
                   </div>
                   <div style={{padding:"10px 11px 12px",flex:1,display:"flex",flexDirection:"column",gap:2}}>
-                    <p style={{margin:0,fontWeight:700,color:C.blanco,fontSize:13,lineHeight:1.3}}>{product.name}</p>
+                    <p style={{margin:0,fontWeight:700,color:"#1A1A1A",fontSize:13,lineHeight:1.3}}>{product.name}</p>
                     {product.description && (
                       <p style={{margin:0,color:C.grisTexto,fontSize:11,lineHeight:1.3}}>{product.description}</p>
                     )}
-                    <p style={{margin:"4px 0 0",fontWeight:800,color:C.amarillo,fontSize:15}}>{fmt(product.price)}</p>
+                    <p style={{margin:"4px 0 0",fontWeight:800,color:C.rojo,fontSize:15}}>{fmt(product.price)}</p>
                     <div style={{marginTop:"auto",paddingTop:8}}>
                       {inCart ? (
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.negroSuave,borderRadius:20,padding:"4px 8px"}}>
@@ -384,9 +388,9 @@ function ClienteView() {
       {/* Drawer carrito */}
       {showCart && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowCart(false)}>
-          <div style={{background:C.negroCard,width:"100%",maxWidth:520,margin:"0 auto",borderRadius:"20px 20px 0 0",padding:20,maxHeight:"80vh",overflowY:"auto",border:`1px solid ${C.grisLinea}`,borderBottom:"none"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"#FFFFFF",width:"100%",maxWidth:520,margin:"0 auto",borderRadius:"20px 20px 0 0",padding:20,maxHeight:"80vh",overflowY:"auto",boxShadow:"0 -4px 24px rgba(0,0,0,0.12)",borderBottom:"none"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{margin:0,color:C.blanco,fontSize:17}}>Tu pedido</h3>
+              <h3 style={{margin:0,color:"#1A1A1A",fontSize:17}}>Tu pedido</h3>
               <button onClick={()=>setShowCart(false)} style={{background:C.negroSuave,border:"none",borderRadius:"50%",width:32,height:32,color:C.grisTexto,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
             </div>
             {cart.length === 0 ? (
@@ -422,12 +426,36 @@ function ClienteView() {
         </div>
       )}
 
-      {/* FAB */}
+      {/* FAB carrito */}
       {cartCount > 0 && !showCart && activeTab === "menu" && (
-        <button onClick={()=>setShowCart(true)} style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:C.rojo,color:C.blanco,border:"none",borderRadius:40,padding:"14px 28px",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:`0 4px 28px ${C.rojoGlow}`,zIndex:100,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={()=>setShowCart(true)} style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:C.rojo,color:"#FFFFFF",border:"none",borderRadius:40,padding:"14px 28px",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:`0 4px 24px ${C.rojoGlow}`,zIndex:100,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:10}}>
           <span style={{background:"rgba(255,255,255,0.25)",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13}}>{cartCount}</span>
           Ver pedido · {fmt(cartTotal)}
         </button>
+      )}
+
+      {/* WhatsApp FAB */}
+      {cartCount === 0 && (
+        <a
+          href="https://wa.me/56956581436?text=Hola%20Almíbar%2C%20tengo%20una%20consulta%20😊"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            position:"fixed",bottom:24,right:20,
+            background:"#25D366",color:"#FFFFFF",
+            borderRadius:"50%",width:56,height:56,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:28,textDecoration:"none",zIndex:100,
+            boxShadow:"0 4px 20px rgba(37,211,102,0.45)",
+            border:"3px solid #FFFFFF",
+          }}
+          title="Chatea con nosotros"
+        >
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="white">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+            <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.848L0 24l6.335-1.51A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-4.988-1.362l-.358-.213-3.76.897.933-3.659-.234-.374A9.797 9.797 0 0 1 2.182 12C2.182 6.584 6.584 2.182 12 2.182S21.818 6.584 21.818 12 17.416 21.818 12 21.818z"/>
+          </svg>
+        </a>
       )}
     </div>
   );
@@ -439,19 +467,19 @@ function WelcomeScreen({ onDone }) {
   const s = (f,v) => setForm(prev=>({...prev,[f]:v}));
   const ok = form.name.trim() && form.phone.trim();
   return (
-    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px"}}>
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:"#F7F6F3",display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px"}}>
       {/* Logo / splash */}
-      <div style={{width:"100%",background:`linear-gradient(160deg,#12001a 0%,#1e0a2e 40%,#1a0010 80%,#0a0a0f 100%)`,borderRadius:"0 0 40px 40px",padding:"48px 24px 40px",textAlign:"center",marginBottom:28}}>
+      <div style={{width:"100%",background:`linear-gradient(160deg,#C41E1E 0%,#E8192C 50%,#FF6B35 100%)`,borderRadius:"0 0 40px 40px",padding:"48px 24px 40px",textAlign:"center",marginBottom:28}}>
         <div style={{fontSize:64,marginBottom:12}}>🍹</div>
         <h1 style={{margin:0,color:C.blanco,fontWeight:900,fontSize:28,letterSpacing:4,textTransform:"uppercase"}}>Almíbar</h1>
-        <p style={{margin:"8px 0 0",color:C.grisTexto,fontSize:14}}>Bar & Restaurante · Curicó</p>
-        <div style={{marginTop:16,display:"inline-block",background:"rgba(196,30,30,0.15)",border:`1px solid ${C.rojo}`,borderRadius:20,padding:"6px 18px"}}>
-          <span style={{color:C.rojo,fontSize:13,fontWeight:700}}>Delivery & Retiro</span>
+        <p style={{margin:"8px 0 0",color:"rgba(255,255,255,0.8)",fontSize:14}}>Bar & Restaurante · Curicó</p>
+        <div style={{marginTop:16,display:"inline-block",background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.5)",borderRadius:20,padding:"6px 18px"}}>
+          <span style={{color:"#FFFFFF",fontSize:13,fontWeight:700}}>Delivery & Retiro</span>
         </div>
       </div>
 
       <div style={{width:"100%"}}>
-        <h2 style={{color:C.blanco,fontSize:18,fontWeight:800,marginBottom:6}}>¡Bienvenido!</h2>
+        <h2 style={{color:"#1A1A1A",fontSize:18,fontWeight:800,marginBottom:6}}>¡Bienvenido!</h2>
         <p style={{color:C.grisTexto,fontSize:13,marginBottom:24,lineHeight:1.5}}>
           Ingresa tus datos una sola vez. Los recordaremos para tus próximos pedidos.
         </p>
@@ -510,16 +538,16 @@ function OrderHistory({ phone }) {
   );
 
   return (
-    <div style={{padding:"12px 12px 80px"}}>
+    <div style={{padding:"12px 12px 80px",background:"#F7F6F3",minHeight:"60vh"}}>
       {orders.map(o => {
         const date = new Date(o.created_at).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"});
         const time = new Date(o.created_at).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"});
         const PAYMENT_ICONS = { efectivo:"💵", debito:"💳", credito:"💳", transferencia:"📲" };
         return (
-          <div key={o.id} style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:14,padding:16,marginBottom:12}}>
+          <div key={o.id} style={{background:"#FFFFFF",border:"1px solid #ECECEC",boxShadow:"0 1px 6px rgba(0,0,0,0.05)",borderRadius:14,padding:16,marginBottom:12}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div>
-                <p style={{margin:0,color:C.blanco,fontWeight:700,fontSize:14}}>{date} · {time}</p>
+                <p style={{margin:0,color:"#1A1A1A",fontWeight:700,fontSize:14}}>{date} · {time}</p>
                 <p style={{margin:"2px 0 0",color:C.grisTexto,fontSize:12}}>
                   {o.delivery_type==="delivery"?"🚗 Delivery":"🏠 Retiro"}
                   {o.notes && o.notes.includes("Pago:") ? ` · 💳 ${o.notes.split("Pago:")[1].split("|")[0].trim()}` : ""}
@@ -530,7 +558,7 @@ function OrderHistory({ phone }) {
               </span>
             </div>
             {(o.order_items||[]).map((it,i) => (
-              <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.blancoSuave,padding:"2px 0"}}>
+              <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#444444",padding:"2px 0"}}>
                 <span>{it.quantity}× {it.product_name}</span>
                 <span>{fmt(it.price*it.quantity)}</span>
               </div>
@@ -572,7 +600,7 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
   };
 
   return (
-    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,padding:"16px 18px 40px"}}>
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:"#F7F6F3",padding:"16px 18px 40px"}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:C.grisTexto,cursor:"pointer",fontSize:15,marginBottom:16,padding:0}}>← Volver</button>
       <h2 style={{color:C.blanco,marginBottom:20,fontWeight:900}}>Confirmar pedido</h2>
 
@@ -1156,8 +1184,8 @@ function ConfigForm({ settings, onSave }) {
 /* ── ESTILOS BASE ── */
 const inp = {
   width:"100%",padding:"11px 14px",borderRadius:10,
-  border:`1px solid ${C.grisLinea}`,background:C.negroSuave,
-  color:C.blanco,fontSize:15,marginBottom:12,
+  border:"1px solid #DDDAD6",background:"#FFFFFF",
+  color:"#1A1A1A",fontSize:15,marginBottom:12,
   boxSizing:"border-box",outline:"none",fontFamily:"inherit",
 };
 const inpLight = {
@@ -1167,7 +1195,7 @@ const inpLight = {
   boxSizing:"border-box",outline:"none",fontFamily:"inherit",
 };
 const btnRed = {
-  background:C.rojo,color:C.blanco,border:"none",borderRadius:10,
+  background:C.rojo,color:"#FFFFFF",border:"none",borderRadius:10,
   padding:"13px 20px",fontWeight:800,fontSize:15,cursor:"pointer",
   width:"100%",letterSpacing:0.5,boxShadow:`0 4px 16px ${C.rojoGlow}`,
 };
