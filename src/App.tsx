@@ -438,22 +438,25 @@ function OrderTracker({ orderId, onNewOrder }) {
 
   // Mensajes de notificación por estado
   const STATUS_MSGS = {
-    preparando: { msg: "¡Tu pedido fue aceptado y está siendo preparado!", color: "#3b82f6", icon: "👨‍🍳" },
-    listo:      { msg: "¡Tu pedido está listo para ser entregado!",        color: "#8b5cf6", icon: "📦" },
-    entregado:  { msg: "¡Pedido entregado! ¡Que lo disfrutes! 🎉",         color: "#10b981", icon: "✅" },
-    cancelado:  { msg: "Tu pedido fue cancelado por el local.",             color: "#ef4444", icon: "❌" },
+    preparando: { msg: "¡Tu pedido fue aceptado y está siendo preparado!", color: "#3b82f6", icon: "👨‍🍳", freq: [660, 880], dur: 0.2 },
+    listo:      { msg: "¡Tu pedido está en camino! 🚗",                    color: "#F5C518", icon: "🚗",  freq: [880, 1100], dur: 0.2 },
+    entregado:  { msg: "¡Pedido entregado! ¡Que lo disfrutes! 🎉",         color: "#10b981", icon: "✅",  freq: [660, 880, 1100], dur: 0.15 },
+    cancelado:  { msg: "Tu pedido fue cancelado por el local.",             color: "#ef4444", icon: "❌",  freq: [300, 220], dur: 0.3 },
   };
 
-  const beep = (freq = 660, dur = 0.25) => {
+  const beep = (freqs = [660], dur = 0.2) => {
     try {
       const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-      osc.start(); osc.stop(ctx.currentTime + dur);
+      freqs.forEach((freq, i) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        const start = ctx.currentTime + i * (dur + 0.05);
+        gain.gain.setValueAtTime(0.35, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+        osc.start(start); osc.stop(start + dur);
+      });
     } catch {}
   };
 
@@ -461,8 +464,8 @@ function OrderTracker({ orderId, onNewOrder }) {
     const t = STATUS_MSGS[status];
     if (!t) return;
     setToast(t);
-    beep(status === "cancelado" ? 220 : 880);
-    setTimeout(() => setToast(null), 5000);
+    beep(t.freq || [660], t.dur || 0.2);
+    setTimeout(() => setToast(null), 6000);
   };
 
   const loadOrder = useCallback(async () => {
@@ -510,7 +513,7 @@ function OrderTracker({ orderId, onNewOrder }) {
   const STEPS = [
     { key: "pendiente",  icon: "🕐", label: "Pedido recibido",  desc: "Esperando confirmación del local" },
     { key: "preparando", icon: "👨‍🍳", label: "En preparación",  desc: "Tu pedido está siendo preparado" },
-    { key: "listo",      icon: "📦", label: "Listo",            desc: "¡Tu pedido está listo!" },
+    { key: "listo",      icon: "🚗", label: "En camino",        desc: "¡Tu pedido está en camino hacia ti!" },
     { key: "entregado",  icon: "✅", label: "Entregado",        desc: "¡Disfruta tu pedido!" },
   ];
 
