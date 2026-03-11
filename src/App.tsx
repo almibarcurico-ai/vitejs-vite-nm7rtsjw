@@ -602,8 +602,15 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
   const s = (f,v) => setForm(prev=>({...prev,[f]:v}));
   const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
 
-  const hasTransfer = !!(settings?.transfer_bank || settings?.transfer_name);
-  const hasPayLink  = !!(settings?.payment_method);
+  const hasTransfer = true;
+  const hasPayLink  = true;
+  const TRANSFER = {
+    bank:    "BCI",
+    name:    "Inversiones Alma SpA",
+    rut:     "78.112.382-K",
+    account: "97597147",
+  };
+  const PAY_LINK = "https://link.mercadopago.cl/almibarbar";
 
   const go = async () => {
     if (!form.name||!form.phone) return alert("Ingresa tu nombre y teléfono");
@@ -679,7 +686,7 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
           {hasTransfer ? (
             <>
               <p style={{margin:"0 0 8px",fontWeight:800,fontSize:13,color:"#166534"}}>Datos para transferir</p>
-              {[["Banco",settings?.transfer_bank],["Titular",settings?.transfer_name],["RUT",settings?.transfer_rut],["N° Cuenta",settings?.transfer_account]]
+              {[["Banco",TRANSFER.bank],["Titular",TRANSFER.name],["RUT",TRANSFER.rut],["N° Cuenta",TRANSFER.account]]
                 .filter(([,v])=>v)
                 .map(([lbl,val])=>(
                   <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"1px solid #BBF7D0"}}>
@@ -706,7 +713,7 @@ function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
             <>
               <p style={{margin:"0 0 10px",fontWeight:800,fontSize:13,color:"#1e40af"}}>Ir a la plataforma de pago</p>
               <a
-                href={settings.payment_method}
+                href={PAY_LINK}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
