@@ -176,17 +176,32 @@ function Login({ role, onLogin }) {
   );
 }
 
+// ── Helper: perfil guardado ──
+const loadProfile = () => { try { const s = localStorage.getItem("almibar_profile"); return s ? JSON.parse(s) : null; } catch { return null; } };
+const saveProfile = (p) => { try { localStorage.setItem("almibar_profile", JSON.stringify(p)); } catch {} };
+
 /* ── VISTA CLIENTE ── */
 function ClienteView() {
   const products = useProducts();
   const { settings } = useSettings();
-  const [cart, setCart]       = useState([]);
+  const [cart, setCart]         = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [activeCat, setActiveCat] = useState("all");
+  const [activeTab, setActiveTab] = useState("menu"); // menu | historial
 
-  // Persiste el seguimiento en sessionStorage para sobrevivir recargas
+  // Perfil del cliente persistido en localStorage
+  const [profile, setProfile] = useState(() => loadProfile());
+
+  const saveAndSetProfile = (p) => { saveProfile(p); setProfile(p); };
+
+  // Paso de pantalla
   const [step, setStep] = useState(() => {
-    try { return sessionStorage.getItem("almibar_step") || "menu"; } catch { return "menu"; }
+    try {
+      // Si hay tracking activo vuelve ahí, si no hay perfil muestra bienvenida
+      if (sessionStorage.getItem("almibar_tracking_id")) return "tracking";
+      if (!loadProfile()) return "welcome";
+      return sessionStorage.getItem("almibar_step") || "menu";
+    } catch { return "welcome"; }
   });
   const setStepPersisted = (s) => {
     setStep(s);
@@ -220,12 +235,15 @@ function ClienteView() {
     const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
     const {data:order, error} = await supabase.from("orders").insert({
       customer_name: form.name, customer_phone: form.phone, address: form.address,
-      delivery_type: form.delivery_type, notes: form.notes, total, status: "pendiente",
+      delivery_type: form.delivery_type, notes: form.notes, total,
+      status: "pendiente", payment_method: form.payment_method,
     }).select().single();
     if (error) return alert("Error al enviar pedido");
     await supabase.from("order_items").insert(
       cart.map(i => ({ order_id: order.id, product_id: i.id, product_name: i.name, price: i.price, quantity: i.qty }))
     );
+    // Actualizar perfil con última dirección usada
+    if (profile) saveAndSetProfile({ ...profile, address: form.address });
     setCart([]);
     setTrackingId(order.id);
     try { sessionStorage.setItem("almibar_tracking_id", order.id); } catch {}
@@ -238,12 +256,21 @@ function ClienteView() {
     setStepPersisted("menu");
   };
 
+  if (step === "welcome") return (
+    <WelcomeScreen onDone={(p) => { saveAndSetProfile(p); setStepPersisted("menu"); }} />
+  );
+
   if (step === "tracking" && trackingId) return (
     <OrderTracker orderId={trackingId} onNewOrder={clearTracking}/>
   );
 
   if (step === "form") return (
-    <OrderForm cart={cart} cartTotal={cartTotal} settings={settings} onSubmit={placeOrder} onBack={()=>setStepPersisted("menu")}/>
+    <OrderForm
+      cart={cart} cartTotal={cartTotal} settings={settings}
+      profile={profile}
+      onSubmit={placeOrder}
+      onBack={()=>setStepPersisted("menu")}
+    />
   );
 
   return (
@@ -259,78 +286,98 @@ function ClienteView() {
             </span>
           )}
         </div>
-        <button onClick={()=>setShowCart(!showCart)} style={{position:"relative",background:"transparent",border:"none",cursor:"pointer",fontSize:26,color:C.blanco,padding:4}}>
-          🛒
-          {cartCount > 0 && (
-            <span style={{position:"absolute",top:-2,right:-4,background:C.rojo,color:"#fff",borderRadius:"50%",width:18,height:18,fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{cartCount}</span>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          {profile && (
+            <span style={{color:C.grisTexto,fontSize:12,fontWeight:600}}>Hola, {profile.name.split(" ")[0]} 👋</span>
           )}
-        </button>
+          <button onClick={()=>setShowCart(!showCart)} style={{position:"relative",background:"transparent",border:"none",cursor:"pointer",fontSize:26,color:C.blanco,padding:4}}>
+            🛒
+            {cartCount > 0 && (
+              <span style={{position:"absolute",top:-2,right:-4,background:C.rojo,color:"#fff",borderRadius:"50%",width:18,height:18,fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{cartCount}</span>
+            )}
+          </button>
+        </div>
       </header>
 
-      {/* Info banner */}
-      <div style={{background:`linear-gradient(135deg,#1a0505 0%,#2a0808 100%)`,padding:"14px 18px",borderBottom:`1px solid ${C.grisLinea}`}}>
-        <p style={{margin:0,color:C.blancoSuave,fontSize:14,fontWeight:600}}>🚗 Delivery · 🏠 Retiro en local</p>
-        {settings?.min_order > 0 && (
-          <p style={{margin:"3px 0 0",color:C.grisTexto,fontSize:12}}>
-            Pedido mínimo {fmt(settings.min_order)} · Despacho {fmt(settings.delivery_cost)}
-          </p>
-        )}
-      </div>
-
-      {/* Categorías */}
-      <div style={{display:"flex",gap:8,padding:"12px 14px",overflowX:"auto",background:C.negroSuave,borderBottom:`1px solid ${C.grisLinea}`,scrollbarWidth:"none"}}>
-        {categories.map(c => (
-          <button key={c} onClick={()=>setActiveCat(c)} style={{
-            whiteSpace:"nowrap",padding:"7px 16px",borderRadius:20,cursor:"pointer",
-            fontSize:13,fontWeight:700,border:"none",
-            background: activeCat===c ? C.rojo : C.negro,
-            color: activeCat===c ? C.blanco : C.grisTexto,
-            boxShadow: activeCat===c ? `0 2px 12px ${C.rojoGlow}` : "none",
-          }}>
-            {c === "all" ? "Todo" : c}
-          </button>
+      {/* Tabs */}
+      <div style={{display:"flex",background:C.negroSuave,borderBottom:`1px solid ${C.grisLinea}`}}>
+        {[{id:"menu",label:"🍽️ Menú"},{id:"historial",label:"📋 Mis pedidos"}].map(t => (
+          <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
+            flex:1,padding:"12px 0",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,
+            background:"transparent",
+            color: activeTab===t.id ? C.rojo : C.grisTexto,
+            borderBottom: activeTab===t.id ? `2px solid ${C.rojo}` : "2px solid transparent",
+          }}>{t.label}</button>
         ))}
       </div>
 
-      {/* Grid productos — estilo PedidosYa */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,padding:"12px 10px"}}>
-        {filtered.map(product => {
-          const inCart = cart.find(i => i.id === product.id);
-          return (
-            <div key={product.id} style={{background:C.negroCard,borderRadius:14,overflow:"hidden",border:`1px solid ${C.grisLinea}`,display:"flex",flexDirection:"column"}}>
-              {/* Imagen */}
-              <div style={{position:"relative",height:120,overflow:"hidden",flexShrink:0}}>
-                <img src={getImg(product)} alt={product.name}
-                  style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
-                  onError={e=>{e.target.src=DEFAULT_IMAGES.default;}}/>
-                <div style={{position:"absolute",bottom:0,left:0,right:0,height:40,background:"linear-gradient(transparent,rgba(0,0,0,0.65))"}}/>
-              </div>
+      {activeTab === "historial" ? (
+        <OrderHistory phone={profile?.phone} />
+      ) : (
+        <>
+          {/* Info banner */}
+          <div style={{background:`linear-gradient(135deg,#1a0505 0%,#2a0808 100%)`,padding:"12px 18px",borderBottom:`1px solid ${C.grisLinea}`}}>
+            <p style={{margin:0,color:C.blancoSuave,fontSize:13,fontWeight:600}}>🚗 Delivery · 🏠 Retiro en local</p>
+            {settings?.min_order > 0 && (
+              <p style={{margin:"2px 0 0",color:C.grisTexto,fontSize:12}}>
+                Mínimo {fmt(settings.min_order)} · Despacho {fmt(settings.delivery_cost)}
+              </p>
+            )}
+          </div>
 
-              {/* Info */}
-              <div style={{padding:"10px 11px 12px",flex:1,display:"flex",flexDirection:"column",gap:2}}>
-                <p style={{margin:0,fontWeight:700,color:C.blanco,fontSize:13,lineHeight:1.3}}>{product.name}</p>
-                {product.description && (
-                  <p style={{margin:0,color:C.grisTexto,fontSize:11,lineHeight:1.3}}>{product.description}</p>
-                )}
-                <p style={{margin:"4px 0 0",fontWeight:800,color:C.amarillo,fontSize:15}}>{fmt(product.price)}</p>
-                <div style={{marginTop:"auto",paddingTop:8}}>
-                  {inCart ? (
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.negroSuave,borderRadius:20,padding:"4px 8px"}}>
-                      <button onClick={()=>remove(product.id)} style={qtyBtn}>−</button>
-                      <span style={{color:C.blanco,fontWeight:700,fontSize:14}}>{inCart.qty}</span>
-                      <button onClick={()=>add(product)} style={qtyBtn}>+</button>
+          {/* Categorías */}
+          <div style={{display:"flex",gap:8,padding:"12px 14px",overflowX:"auto",background:C.negroSuave,borderBottom:`1px solid ${C.grisLinea}`,scrollbarWidth:"none"}}>
+            {categories.map(c => (
+              <button key={c} onClick={()=>setActiveCat(c)} style={{
+                whiteSpace:"nowrap",padding:"7px 16px",borderRadius:20,cursor:"pointer",
+                fontSize:13,fontWeight:700,border:"none",
+                background: activeCat===c ? C.rojo : C.negro,
+                color: activeCat===c ? C.blanco : C.grisTexto,
+                boxShadow: activeCat===c ? `0 2px 12px ${C.rojoGlow}` : "none",
+              }}>
+                {c === "all" ? "Todo" : c}
+              </button>
+            ))}
+          </div>
+
+          {/* Grid productos */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,padding:"12px 10px"}}>
+            {filtered.map(product => {
+              const inCart = cart.find(i => i.id === product.id);
+              return (
+                <div key={product.id} style={{background:C.negroCard,borderRadius:14,overflow:"hidden",border:`1px solid ${C.grisLinea}`,display:"flex",flexDirection:"column"}}>
+                  <div style={{position:"relative",height:120,overflow:"hidden",flexShrink:0}}>
+                    <img src={getImg(product)} alt={product.name}
+                      style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
+                      onError={e=>{e.target.src=DEFAULT_IMAGES.default;}}/>
+                    <div style={{position:"absolute",bottom:0,left:0,right:0,height:40,background:"linear-gradient(transparent,rgba(0,0,0,0.65))"}}/>
+                  </div>
+                  <div style={{padding:"10px 11px 12px",flex:1,display:"flex",flexDirection:"column",gap:2}}>
+                    <p style={{margin:0,fontWeight:700,color:C.blanco,fontSize:13,lineHeight:1.3}}>{product.name}</p>
+                    {product.description && (
+                      <p style={{margin:0,color:C.grisTexto,fontSize:11,lineHeight:1.3}}>{product.description}</p>
+                    )}
+                    <p style={{margin:"4px 0 0",fontWeight:800,color:C.amarillo,fontSize:15}}>{fmt(product.price)}</p>
+                    <div style={{marginTop:"auto",paddingTop:8}}>
+                      {inCart ? (
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.negroSuave,borderRadius:20,padding:"4px 8px"}}>
+                          <button onClick={()=>remove(product.id)} style={qtyBtn}>−</button>
+                          <span style={{color:C.blanco,fontWeight:700,fontSize:14}}>{inCart.qty}</span>
+                          <button onClick={()=>add(product)} style={qtyBtn}>+</button>
+                        </div>
+                      ) : (
+                        <button onClick={()=>add(product)} style={{width:"100%",padding:"8px 0",background:C.rojo,color:C.blanco,border:"none",borderRadius:20,fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:`0 2px 8px ${C.rojoGlow}`}}>
+                          + Agregar
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <button onClick={()=>add(product)} style={{width:"100%",padding:"8px 0",background:C.rojo,color:C.blanco,border:"none",borderRadius:20,fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:`0 2px 8px ${C.rojoGlow}`}}>
-                      + Agregar
-                    </button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* Drawer carrito */}
       {showCart && (
@@ -364,7 +411,7 @@ function ClienteView() {
                 {settings?.delivery_cost > 0 && (
                   <p style={{color:C.grisTexto,fontSize:13,margin:"0 0 8px",textAlign:"right"}}>+ Despacho desde {fmt(settings.delivery_cost)}</p>
                 )}
-                <button style={{...btnRed,marginTop:8}} onClick={()=>{setShowCart(false);setStep("form");}}>
+                <button style={{...btnRed,marginTop:8}} onClick={()=>{setShowCart(false);setStepPersisted("form");}}>
                   Ir al pedido →
                 </button>
               </>
@@ -374,7 +421,7 @@ function ClienteView() {
       )}
 
       {/* FAB */}
-      {cartCount > 0 && !showCart && (
+      {cartCount > 0 && !showCart && activeTab === "menu" && (
         <button onClick={()=>setShowCart(true)} style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:C.rojo,color:C.blanco,border:"none",borderRadius:40,padding:"14px 28px",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:`0 4px 28px ${C.rojoGlow}`,zIndex:100,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:10}}>
           <span style={{background:"rgba(255,255,255,0.25)",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13}}>{cartCount}</span>
           Ver pedido · {fmt(cartTotal)}
@@ -384,47 +431,211 @@ function ClienteView() {
   );
 }
 
+/* ── PANTALLA BIENVENIDA / REGISTRO ── */
+function WelcomeScreen({ onDone }) {
+  const [form, setForm] = useState({ name:"", phone:"", address:"" });
+  const s = (f,v) => setForm(prev=>({...prev,[f]:v}));
+  const ok = form.name.trim() && form.phone.trim();
+  return (
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px"}}>
+      {/* Logo / splash */}
+      <div style={{width:"100%",background:`linear-gradient(160deg,#1a0000 0%,#2a0808 60%,#0d0d0d 100%)`,borderRadius:"0 0 40px 40px",padding:"48px 24px 40px",textAlign:"center",marginBottom:28}}>
+        <div style={{fontSize:64,marginBottom:12}}>🍹</div>
+        <h1 style={{margin:0,color:C.blanco,fontWeight:900,fontSize:28,letterSpacing:4,textTransform:"uppercase"}}>Almíbar</h1>
+        <p style={{margin:"8px 0 0",color:C.grisTexto,fontSize:14}}>Bar & Restaurante · Curicó</p>
+        <div style={{marginTop:16,display:"inline-block",background:"rgba(196,30,30,0.15)",border:`1px solid ${C.rojo}`,borderRadius:20,padding:"6px 18px"}}>
+          <span style={{color:C.rojo,fontSize:13,fontWeight:700}}>Delivery & Retiro</span>
+        </div>
+      </div>
+
+      <div style={{width:"100%"}}>
+        <h2 style={{color:C.blanco,fontSize:18,fontWeight:800,marginBottom:6}}>¡Bienvenido!</h2>
+        <p style={{color:C.grisTexto,fontSize:13,marginBottom:24,lineHeight:1.5}}>
+          Ingresa tus datos una sola vez. Los recordaremos para tus próximos pedidos.
+        </p>
+
+        <label style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Nombre completo *</label>
+        <input style={{...inp,marginTop:6}} placeholder="Ej: Juan Pérez" value={form.name} onChange={e=>s("name",e.target.value)}/>
+
+        <label style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Teléfono *</label>
+        <input style={{...inp,marginTop:6}} placeholder="+56 9 1234 5678" type="tel" value={form.phone} onChange={e=>s("phone",e.target.value)}/>
+
+        <label style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Dirección habitual (opcional)</label>
+        <input style={{...inp,marginTop:6}} placeholder="Calle, número, ciudad" value={form.address} onChange={e=>s("address",e.target.value)}/>
+
+        <button
+          style={{...btnRed,marginTop:24,opacity:ok?1:0.45,cursor:ok?"pointer":"not-allowed"}}
+          disabled={!ok}
+          onClick={()=>onDone(form)}
+        >
+          Comenzar a pedir →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── HISTORIAL DE PEDIDOS ── */
+function OrderHistory({ phone }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!phone) { setLoading(false); return; }
+    supabase.from("orders")
+      .select("*, order_items(*)")
+      .eq("customer_phone", phone)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => { setOrders(data || []); setLoading(false); });
+  }, [phone]);
+
+  const stColor = { pendiente:"#f59e0b", preparando:"#3b82f6", listo:"#F5C518", entregado:"#10b981", cancelado:"#ef4444" };
+  const stLabel = { pendiente:"Pendiente", preparando:"Preparando", listo:"En camino", entregado:"Entregado", cancelado:"Cancelado" };
+
+  if (!phone) return (
+    <div style={{padding:40,textAlign:"center"}}>
+      <p style={{fontSize:36}}>📋</p>
+      <p style={{color:C.grisTexto,fontSize:14}}>Registra tu teléfono para ver tu historial.</p>
+    </div>
+  );
+  if (loading) return <div style={{padding:40,textAlign:"center",color:C.grisTexto}}>Cargando...</div>;
+  if (orders.length === 0) return (
+    <div style={{padding:40,textAlign:"center"}}>
+      <p style={{fontSize:36}}>🛒</p>
+      <p style={{color:C.grisTexto,fontSize:14}}>Aún no tienes pedidos registrados.</p>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"12px 12px 80px"}}>
+      {orders.map(o => {
+        const date = new Date(o.created_at).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"});
+        const time = new Date(o.created_at).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"});
+        const PAYMENT_ICONS = { efectivo:"💵", debito:"💳", credito:"💳", transferencia:"📲" };
+        return (
+          <div key={o.id} style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:14,padding:16,marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div>
+                <p style={{margin:0,color:C.blanco,fontWeight:700,fontSize:14}}>{date} · {time}</p>
+                <p style={{margin:"2px 0 0",color:C.grisTexto,fontSize:12}}>
+                  {o.delivery_type==="delivery"?"🚗 Delivery":"🏠 Retiro"}
+                  {o.payment_method && ` · ${PAYMENT_ICONS[o.payment_method]||""} ${o.payment_method}`}
+                </p>
+              </div>
+              <span style={{padding:"3px 10px",borderRadius:12,fontSize:12,fontWeight:700,color:stColor[o.status]||"#fff",background:"rgba(255,255,255,0.05)",border:`1px solid ${stColor[o.status]||C.grisLinea}`}}>
+                {stLabel[o.status]||o.status}
+              </span>
+            </div>
+            {(o.order_items||[]).map((it,i) => (
+              <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.blancoSuave,padding:"2px 0"}}>
+                <span>{it.quantity}× {it.product_name}</span>
+                <span>{fmt(it.price*it.quantity)}</span>
+              </div>
+            ))}
+            <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.amarillo,fontSize:15,borderTop:`1px solid ${C.grisLinea}`,paddingTop:8,marginTop:6}}>
+              <span>Total</span><span>{fmt(o.total)}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── FORMULARIO PEDIDO ── */
-function OrderForm({ cart, cartTotal, settings, onSubmit, onBack }) {
-  const [form, setForm] = useState({name:"",phone:"",address:"",delivery_type:"delivery",notes:""});
+function OrderForm({ cart, cartTotal, settings, profile, onSubmit, onBack }) {
+  const [form, setForm] = useState({
+    name:    profile?.name    || "",
+    phone:   profile?.phone   || "",
+    address: profile?.address || "",
+    delivery_type: "delivery",
+    notes: "",
+    payment_method: "",
+  });
   const [loading, setLoading] = useState(false);
+  const s = (f,v) => setForm(prev=>({...prev,[f]:v}));
   const total = cartTotal + (form.delivery_type === "delivery" ? (settings?.delivery_cost||0) : 0);
+
+  const PAYMENT = [
+    { id:"efectivo",       icon:"💵", label:"Efectivo" },
+    { id:"debito",         icon:"💳", label:"Débito" },
+    { id:"credito",        icon:"💳", label:"Crédito" },
+    { id:"transferencia",  icon:"📲", label:"Transferencia" },
+  ];
+
   const go = async () => {
     if (!form.name||!form.phone) return alert("Ingresa tu nombre y teléfono");
-    if (form.delivery_type==="delivery"&&!form.address) return alert("Ingresa tu dirección");
+    if (form.delivery_type==="delivery"&&!form.address) return alert("Ingresa tu dirección de entrega");
+    if (!form.payment_method) return alert("Selecciona un método de pago");
     setLoading(true); await onSubmit(form); setLoading(false);
   };
+
   return (
-    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,padding:20}}>
+    <div style={{maxWidth:520,margin:"0 auto",minHeight:"100vh",background:C.negro,padding:"16px 18px 40px"}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:C.grisTexto,cursor:"pointer",fontSize:15,marginBottom:16,padding:0}}>← Volver</button>
-      <h2 style={{color:C.blanco,marginBottom:20}}>Datos del pedido</h2>
-      <div style={{display:"flex",gap:8,marginBottom:16}}>
+      <h2 style={{color:C.blanco,marginBottom:20,fontWeight:900}}>Confirmar pedido</h2>
+
+      {/* Tipo de entrega */}
+      <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tipo de entrega</p>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
         {["delivery","pickup"].map(t => (
-          <button key={t} onClick={()=>setForm({...form,delivery_type:t})} style={{flex:1,padding:12,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,border:`2px solid ${form.delivery_type===t?C.rojo:C.grisLinea}`,background:form.delivery_type===t?"#2a0808":C.negroCard,color:form.delivery_type===t?C.blanco:C.grisTexto}}>
-            {t==="delivery"?"🚗 Delivery":"🏠 Retiro en local"}
+          <button key={t} onClick={()=>s("delivery_type",t)} style={{flex:1,padding:12,borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,border:`2px solid ${form.delivery_type===t?C.rojo:C.grisLinea}`,background:form.delivery_type===t?"#2a0808":C.negroCard,color:form.delivery_type===t?C.blanco:C.grisTexto}}>
+            {t==="delivery"?"🚗 Delivery":"🏠 Retiro"}
           </button>
         ))}
       </div>
-      <input style={inp} placeholder="Tu nombre *" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
-      <input style={inp} placeholder="Teléfono *" type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/>
-      {form.delivery_type==="delivery" && <input style={inp} placeholder="Dirección *" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/>}
-      <textarea style={{...inp,height:80,resize:"vertical"}} placeholder="Notas (opcional)" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/>
-      <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:12,padding:16,marginBottom:16}}>
+
+      {/* Datos personales — pre-rellenados */}
+      <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tus datos</p>
+      <input style={inp} placeholder="Nombre *" value={form.name} onChange={e=>s("name",e.target.value)}/>
+      <input style={inp} placeholder="Teléfono *" type="tel" value={form.phone} onChange={e=>s("phone",e.target.value)}/>
+      {form.delivery_type==="delivery" && (
+        <input style={{...inp,border:`2px solid ${C.rojo}`}} placeholder="Dirección de entrega *" value={form.address} onChange={e=>s("address",e.target.value)}/>
+      )}
+      <textarea style={{...inp,height:72,resize:"vertical"}} placeholder="Notas (opcional)" value={form.notes} onChange={e=>s("notes",e.target.value)}/>
+
+      {/* Método de pago */}
+      <p style={{color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1,margin:"4px 0 10px"}}>Método de pago *</p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
+        {PAYMENT.map(p => (
+          <button key={p.id} onClick={()=>s("payment_method",p.id)} style={{
+            padding:"12px 8px",borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,
+            border:`2px solid ${form.payment_method===p.id?C.rojo:C.grisLinea}`,
+            background: form.payment_method===p.id?"#2a0808":C.negroCard,
+            color: form.payment_method===p.id?C.blanco:C.grisTexto,
+            display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+          }}>
+            <span>{p.icon}</span>{p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Resumen */}
+      <div style={{background:C.negroCard,border:`1px solid ${C.grisLinea}`,borderRadius:12,padding:16,marginBottom:20}}>
+        <p style={{margin:"0 0 10px",color:C.grisTexto,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Resumen</p>
         {cart.map(item => (
-          <div key={item.id} style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.blancoSuave,padding:"4px 0"}}>
+          <div key={item.id} style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.blancoSuave,padding:"3px 0"}}>
             <span>{item.name} × {item.qty}</span><span>{fmt(item.price*item.qty)}</span>
           </div>
         ))}
         {form.delivery_type==="delivery" && (
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:14,color:C.grisTexto,padding:"4px 0"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.grisTexto,padding:"3px 0"}}>
             <span>Despacho</span><span>{fmt(settings?.delivery_cost||0)}</span>
           </div>
         )}
-        <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.amarillo,fontSize:16,borderTop:`1px solid ${C.grisLinea}`,paddingTop:10,marginTop:6}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:C.amarillo,fontSize:17,borderTop:`1px solid ${C.grisLinea}`,paddingTop:10,marginTop:6}}>
           <span>Total</span><span>{fmt(total)}</span>
         </div>
       </div>
-      <button style={btnRed} onClick={go} disabled={loading}>{loading?"Enviando...":"Confirmar pedido"}</button>
+
+      <button
+        style={{...btnRed, opacity: form.payment_method ? 1 : 0.45, cursor: form.payment_method ? "pointer" : "not-allowed"}}
+        onClick={go}
+        disabled={loading || !form.payment_method}
+      >
+        {loading ? "Enviando..." : "✓ Confirmar pedido"}
+      </button>
     </div>
   );
 }
